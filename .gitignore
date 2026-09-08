@@ -216,3 +216,17 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+
+# schema SQL vivent sous data/ dans ce depot.
+data/raw/
+data/processed/
+data/interim/
+
+# Modeles entraines
+models/
+*.joblib
+*.pkl
+
+# Configuration locale 
+.env

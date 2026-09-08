@@ -1,15 +1,42 @@
-pytest
-pytest-cov
+# ---------------------------------------------------------------------------
+# Dependances du projet Terre, Vent, Feu, Eau, Data
+# Fusion des dependances initiales du depot et de celles du pipeline d'ingestion.
+# ---------------------------------------------------------------------------
+
+# --- acces base de donnees ---
+sqlalchemy
+psycopg2-binary          # remplace psycopg2 : version precompilee, s'installe sans
+                         # compilateur C (indispensable sous Windows)
+python-dotenv            # lecture du fichier .env
+
+# --- manipulation de donnees ---
 pandas
 numpy
-scikit-learn
+pyarrow                  # lecture/ecriture Parquet
+requests                 # telechargement BDIFF et data.gouv
+
+# --- geo ---
+geopandas
+shapely
+
+# --- visualisation et application ---
 streamlit
-sqlalchemy
-psycopg2
 folium
-shap
+streamlit-folium         # integration des cartes Folium dans Streamlit
 matplotlib
 seaborn
+
+# --- machine learning ---
+scikit-learn
+shap
+joblib
+
+# --- notebooks ---
+jupyterlab
+ipykernel
+
+# --- tests et qualite ---
+pytest
+pytest-cov
+
 setuptools==83.0.0
-
-

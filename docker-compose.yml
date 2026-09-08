@@ -1,0 +1,33 @@
+# =============================================================================
+#  Ce fichier decrit la base de donnees dont le projet a besoin.
+#  Lancer :  docker compose up -d      (demarre la base en arriere-plan)
+#  Arreter :  docker compose down      (garde les donnees)
+#             docker compose down -v   (SUPPRIME les donnees : repart de zero)
+# =============================================================================
+services:
+  db:
+    # postgis/postgis = image officielle PostgreSQL AVEC l'extension geospatiale
+    # 16-3.4 = PostgreSQL 16 + PostGIS 3.4  (version figee = reproductible)
+    image: postgis/postgis:16-3.4
+    container_name: tvfed_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     ${DB_USER:-tvfed}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-tvfed}
+      POSTGRES_DB:       ${DB_NAME:-tvfed}
+    ports:
+      # "hote:conteneur"  -> on parle a la base sur localhost:5432
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      # volume nomme : les donnees survivent a un redemarrage du conteneur
+      - pgdata:/var/lib/postgresql/data
+      # tout .sql depose ici est joue AUTOMATIQUEMENT a la 1re creation de la base
+      - ./data/sql/create_tables.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-tvfed} -d ${DB_NAME:-tvfed}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
