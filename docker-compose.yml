@@ -13,7 +13,10 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER:     ${DB_USER:-tvfed}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-tvfed}
+      # ':?' = obligatoire. Docker refuse de demarrer avec un message clair
+      # si DB_PASSWORD n'est pas defini, plutot que d'utiliser en silence
+      # un mot de passe ecrit dans le depot.
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?definir DB_PASSWORD dans le .env}
       POSTGRES_DB:       ${DB_NAME:-tvfed}
     ports:
       # "hote:conteneur"  -> on parle a la base sur localhost:5432

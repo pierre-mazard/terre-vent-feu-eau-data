@@ -53,7 +53,7 @@ def _bundle_depuis_magasin_windows():
             for cert, encodage, confiance in ssl.enum_certificates(magasin):
                 if encodage != "x509_asn":
                     continue
-             
+
                 if confiance is True or (
                     confiance and "1.3.6.1.5.5.7.3.1" in confiance
                 ):
@@ -108,7 +108,8 @@ if SSL_VERIFY is False:
     )
 
 DB_USER = os.getenv("DB_USER", "tvfed")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "tvfed")
+# Pas de valeur par defaut : un mot de passe ne doit jamais vivre dans le code.
+DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 DB_NAME = os.getenv("DB_NAME", "tvfed")
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = os.getenv("DB_PORT", "5432")
