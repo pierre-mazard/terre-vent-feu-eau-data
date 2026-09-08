@@ -1,0 +1,9 @@
+[tool.black]
+line-length = 88
+
+[tool.flake8]
+max-line-length = 88
+exclude = .git,__pycache__,build,dist
+
+[tool.bandit]
+skips = ["B101"]
