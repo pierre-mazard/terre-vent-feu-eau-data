@@ -30,9 +30,8 @@ import sys
 import time
 import zipfile
 
-import requests
-
 from config import DATA_RAW, SSL_VERIFY
+import requests
 
 BASE = "https://bdiff.agriculture.gouv.fr"
 SEARCH = BASE + "/incendies"

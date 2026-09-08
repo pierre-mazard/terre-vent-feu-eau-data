@@ -8,6 +8,7 @@ sqlalchemy
 psycopg2-binary          # remplace psycopg2 : version precompilee, s'installe sans
                          # compilateur C (indispensable sous Windows)
 python-dotenv            # lecture du fichier .env
+truststore               # utilisation du magasin de certificats du systeme
 
 # --- manipulation de donnees ---
 pandas
