@@ -195,7 +195,17 @@ SELECT DISTINCT ON (s.annee, s.numero)
     s.fichier_source
 FROM stg_bdiff s
 WHERE s.annee ~ '^[0-9]{4}$' AND s.numero ~ '^[0-9]+$'
-ORDER BY s.annee, s.numero, s.fichier_source;
+-- Regle de dedoublonnage EXPLICITE : quand une paire (annee, numero) apparait
+-- plusieurs fois, on garde la ligne LA PLUS COMPLETE (le plus de champs cles
+-- renseignes), et on departage a fichier_source pour rester deterministe.
+ORDER BY s.annee, s.numero,
+    (   (NULLIF(s.date_alerte, '')          IS NOT NULL)::INT
+      + (NULLIF(s.code_insee, '')           IS NOT NULL)::INT
+      + (NULLIF(s.surface_parcourue_m2, '') IS NOT NULL)::INT
+      + (NULLIF(s.nature, '')               IS NOT NULL)::INT
+      + (NULLIF(s.type_peuplement, '')      IS NOT NULL)::INT
+    ) DESC,
+    s.fichier_source;
 """
 
 

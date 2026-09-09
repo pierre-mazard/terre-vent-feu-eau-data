@@ -4,12 +4,12 @@
 
 | Constat | Valeur |
 |---|---|
-| Volume total 1973 → 2024 | **140 248 incendies**, 1 057 973 ha parcourus |
+| Volume total 1973 → 2024 | **140 248 lignes brutes** telechargees, **140 246 incendies** en base apres dedoublonnage (2 paires (annee, numero) en double dans la source) — voir `docs/QUALITE.md`, test 6 |
 | Volume 2024 seul | 1 367 incendies, 2 768 ha |
 | Limite d'export | 30 000 lignes → **une requete par annee suffit** (max ~6 000/an) |
 | Formulaire | GET sur `/incendies` avec des parametres `if[...]`, criteres memorises en session |
 | Export | `GET /incendies/zip` → ZIP contenant `Incendies.csv`, `Definitions.pdf`, `Mention legales.pdf` |
-| Format CSV | UTF-8, separateur `;`, **2 lignes d'en-tete parasites** avant les noms de colonnes |
+| Format CSV | UTF-8, separateur `;`, **nombre variable de lignes d'en-tete** (2, 3, 5 ou 6 selon l'annee) : le script **cherche** la ligne commencant par `Annee;` au lieu de la supposer (`ligne_entete()` dans `load.py`) |
 | Surfaces | exprimees en **m²** (et non en hectares) |
 | Cle metier | `(Annee, Numero)` — unique, verifie sur l'export 2024 |
 | Perimetre par defaut | `if[fr]=1` = « Type de feu : F » (feux de foret) |

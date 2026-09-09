@@ -1,6 +1,6 @@
 # Qualite des donnees
 
-Genere le 08/09/2026 a 20:50 par `data/ingestion_pipeline/qualite.py`.
+Genere le 08/09/2026 a 21:20 par `data/ingestion_pipeline/qualite.py`.
 
 | # | Test | Mesure | Attendu | Verdict |
 |---|------|--------|---------|---------|
