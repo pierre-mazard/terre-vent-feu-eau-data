@@ -28,7 +28,7 @@ def main() -> int:
     )
     parseur.add_argument("--annee-min", type=int, default=ingest_bdiff.ANNEE_MIN)
     parseur.add_argument("--annee-max", type=int, default=ingest_bdiff.ANNEE_MAX)
-    args = parseur.parse_args([])  # ignore les arguments de pytest
+    args = parseur.parse_args()
 
     if not args.skip_download:
         print("[1/3] Referentiel des communes")

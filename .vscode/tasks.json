@@ -1,0 +1,22 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Lancer Streamlit jour 3",
+			"type": "shell",
+			"command": "C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+			"args": [
+				"-m",
+				"streamlit",
+				"run",
+				"api/streamlit/app.py",
+				"--server.headless",
+				"true",
+				"--server.port",
+				"8502"
+			],
+			"isBackground": true,
+			"problemMatcher": []
+		}
+	]
+}
