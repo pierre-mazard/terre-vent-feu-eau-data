@@ -226,7 +226,7 @@ def construire_fires(engine) -> None:
     total, geo, amin, amax = stats
     print(
         f"fires : {total} incendies ({amin}-{amax}), "
-        f"{geo} geocodes ({geo/max(total,1):.1%})"
+        f"{geo} geocodes ({geo/max(total, 1):.1%})"
     )
 
 

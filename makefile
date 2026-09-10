@@ -8,6 +8,6 @@ security:
 test:
 	pytest -q
 run-pipeline:
-	python -m models.pipeline.main
+	python -m data.ingestion_pipeline.pipeline
 run-streamlit:
 	streamlit run api/streamlit/app.py
