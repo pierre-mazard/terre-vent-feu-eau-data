@@ -5,3 +5,4 @@ pip-audit
 pre-commit
 pyupgrade
 setuptools>=83.0.0
+yamllint

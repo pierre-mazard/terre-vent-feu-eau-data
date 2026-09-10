@@ -1,8 +1,0 @@
-bandit
-black
-flake8
-pip-audit
-pre-commit
-pytest
-pytest-cov
-pyupgrade
