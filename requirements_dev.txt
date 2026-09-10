@@ -1,0 +1,7 @@
+black
+flake8
+bandit
+pip-audit
+pre-commit
+pyupgrade
+setuptools>=83.0.0
