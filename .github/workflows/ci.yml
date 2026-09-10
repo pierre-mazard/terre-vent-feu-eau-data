@@ -33,7 +33,7 @@ jobs:
         run: black --check .
 
       - name: Security scan (Bandit)
-        run: bandit -r . -x .venv
+        run: bandit -c .bandit -r .
 
       - name: Dependency security audit
         run: pip-audit
