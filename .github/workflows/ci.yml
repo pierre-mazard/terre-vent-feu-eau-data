@@ -33,7 +33,7 @@ jobs:
         run: black --check .
 
       - name: Security scan (Bandit)
-        run: bandit -r .
+        run: bandit -r . -x .venv
 
       - name: Dependency security audit
         run: pip-audit
@@ -50,5 +50,4 @@ jobs:
           fi
 
       - name: Validate Streamlit build
-        run: |
-          python -m py_compile api/streamlit/*.py
+        run: python -m py_compile api/streamlit/*.py

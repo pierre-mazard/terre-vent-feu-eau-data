@@ -13,3 +13,6 @@ exclude = [
 
 [tool.bandit]
 skips = ["B101"]
+
+[tool.pytest.ini_options]
+python_files = ["test_*.py"]

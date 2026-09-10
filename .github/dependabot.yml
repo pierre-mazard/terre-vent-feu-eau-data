@@ -1,8 +1,5 @@
 version: 2
 updates:
-  # ---------------------------------------------------------
-  # 1. Python dependencies (requirements.txt, pyproject.toml)
-  # ---------------------------------------------------------
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
@@ -11,24 +8,17 @@ updates:
       - dependency-type: "direct"
       - dependency-type: "indirect"
     ignore:
-      # Ignore major breaking changes (optional but recommended)
       - dependency-type: "direct"
         update-types: ["version-update:semver-major"]
     open-pull-requests-limit: 10
 
-  # ---------------------------------------------------------
-  # 2. GitHub Actions dependencies (actions/checkout, setup-python, etc.)
-  # ---------------------------------------------------------
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
 
-  # ---------------------------------------------------------
-  # 3. Pre-commit hooks (OPTIONAL — only if you want auto-updates)
-  # ---------------------------------------------------------
-   - package-ecosystem: "github-actions"
-     directory: "/"
-     schedule:
-       interval: "weekly"
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
