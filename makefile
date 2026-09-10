@@ -1,19 +1,13 @@
-install:
-    pip install -r requirements.txt
-
+.PHONY: lint security test run-pipeline run streamlit
 lint:
-    flake8 .
-    black --check .
-
+	black .
+	flake8 .
 security:
-    bandit -r .
-    pip-audit
-
+	bandit -r . -x .venv
+	pip-audit
 test:
-    pytest -q
-
-run-streamlit:
-    streamlit run api/streamlit/app.py
-
+	pytest -q
 run-pipeline:
-    python data/ingestion_pipeline/pipeline.py
+	python -m models.pipeline.main
+run-streamlit:
+	streamlit run api/streamlit/app.py

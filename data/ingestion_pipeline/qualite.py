@@ -41,9 +41,7 @@ def lancer_tests() -> list[dict]:
         )
 
         # 2 - taux de geocodage : combien de feux ont trouve leur commune
-        taux = float(
-            _scalaire(conn, "SELECT avg(is_geocoded::int) FROM fires") or 0
-        )
+        taux = float(_scalaire(conn, "SELECT avg(is_geocoded::int) FROM fires") or 0)
         resultats.append(
             {
                 "n": 2,
