@@ -34,8 +34,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
-          pip install -r requirements_dev.txt
+          pip install --index-url https://pypi.org/simple --retries 10 --timeout 60 -r requirements.txt
+          pip install --index-url https://pypi.org/simple --retries 10 --timeout 60 -r requirements_dev.txt
 
       - name: Lint (flake8)
         run: flake8 .
