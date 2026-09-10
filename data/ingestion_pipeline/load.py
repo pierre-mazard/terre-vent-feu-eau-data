@@ -17,7 +17,18 @@ import glob
 import pandas as pd
 from sqlalchemy import text
 
-from config import DATA_RAW, get_engine
+import sys as _sys
+from pathlib import Path as _Path
+
+# config.py vit a la RACINE du depot depuis la restructuration du 10/09.
+# On l'ajoute au chemin de recherche de Python pour que ce script reste
+# lancable directement (python data/ingestion_pipeline/xxx.py) et pas
+# seulement via "python -m data.ingestion_pipeline.xxx".
+_RACINE = _Path(__file__).resolve().parents[2]
+if str(_RACINE) not in _sys.path:
+    _sys.path.insert(0, str(_RACINE))
+
+from config import DATA_RAW, get_engine  # noqa: E402
 
 COLONNES_BDIFF = [
     "annee",

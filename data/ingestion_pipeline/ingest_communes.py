@@ -12,7 +12,17 @@ from __future__ import annotations
 
 import requests
 
-from config import DATA_RAW, SSL_VERIFY
+import sys as _sys
+from pathlib import Path as _Path
+
+# config.py vit a la RACINE du depot depuis la restructuration du 10/09.
+# On l'ajoute au chemin de recherche de Python pour que ce script reste
+
+_RACINE = _Path(__file__).resolve().parents[2]
+if str(_RACINE) not in _sys.path:
+    _sys.path.insert(0, str(_RACINE))
+
+from config import DATA_RAW, SSL_VERIFY  # noqa: E402
 
 DATASET = "communes-et-villes-de-france-en-csv-excel-json-parquet-et-feather"
 API = f"https://www.data.gouv.fr/api/1/datasets/{DATASET}/"

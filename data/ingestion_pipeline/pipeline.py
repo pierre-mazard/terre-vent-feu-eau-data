@@ -15,8 +15,15 @@ Usage :
 
 import argparse
 import sys
+from pathlib import Path as _Path
 
-from data.ingestion_pipeline import ingest_bdiff, ingest_communes, load
+# config.py et le paquet data/ vivent a la RACINE du depot : on l'ajoute au
+# chemin de recherche pour que ce script reste lancable directement.
+_RACINE = _Path(__file__).resolve().parents[2]
+if str(_RACINE) not in sys.path:
+    sys.path.insert(0, str(_RACINE))
+
+from data.ingestion_pipeline import ingest_bdiff, ingest_communes, load  # noqa: E402
 
 
 def main() -> int:

@@ -7,10 +7,12 @@ import pandas as pd
 import streamlit as st
 from sqlalchemy import text
 
-# Le module est lance depuis Streamlit ou le debogueur, avec des repertoires
-# courants differents. On ajoute explicitement le dossier qui contient config.py.
+# Streamlit lance ce fichier avec api/streamlit comme repertoire de recherche,
+# pas la racine du depot. Or config.py vit A LA RACINE : on l'ajoute donc
+# explicitement, sinon "from config import ..." echoue.
 RACINE = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(RACINE / "data" / "ingestion_pipeline"))
+if str(RACINE) not in sys.path:
+    sys.path.insert(0, str(RACINE))
 
 from config import get_engine  # noqa: E402
 
@@ -67,7 +69,6 @@ def _categorie_vegetation(donnees: pd.DataFrame) -> pd.Series:
 def main() -> None:
     st.set_page_config(
         page_title="Terre, Vent, Feu, Eau, Data",
-        page_icon="🔥",
         layout="wide",
     )
     st.title("Terre, Vent, Feu, Eau, Data")
