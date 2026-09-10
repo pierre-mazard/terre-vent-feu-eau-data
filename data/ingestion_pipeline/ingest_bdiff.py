@@ -30,7 +30,7 @@ import sys
 import time
 import zipfile
 
-from config import DATA_RAW, SSL_VERIFY
+from config import DATA_RAW
 import requests
 
 BASE = "https://bdiff.agriculture.gouv.fr"
@@ -75,51 +75,73 @@ def criteres_annee(annee: int) -> dict:
 
 
 def telecharger_annee(session: requests.Session, annee: int) -> int:
-    """Telecharge une annee dans data/raw/bdiff_<annee>.csv.
-
-    Retourne le nombre de lignes annonce par le site, ou -1.
-    """
     cible = DATA_RAW / f"bdiff_{annee}.csv"
-    if cible.exists():  # CACHE : on ne retelecharge jamais
+    if cible.exists():
         print(f"  {annee} : deja present, on saute")
         return -1
 
-    # 1) on "fait la recherche" -> le serveur memorise les criteres
-    r = session.get(SEARCH, params=criteres_annee(annee), timeout=90, verify=SSL_VERIFY)
-    r.raise_for_status()
+    # Headers qui imitent un vrai navigateur
+    session.headers.update(
+        {
+            "User-Agent": (
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/118.0 Safari/537.36"
+            ),
+            "Accept-Language": "fr-FR,fr;q=0.9",
+            "Referer": "https://bdiff.agriculture.gouv.fr/incendies",
+        }
+    )
 
-    # 2) on demande le ZIP avec la meme session
-    z = session.get(ZIP, timeout=180, verify=SSL_VERIFY)
-    z.raise_for_status()
+    # 0) Initialisation de la session (obligatoire)
+    try:
+        session.get(SEARCH, timeout=30, verify=False)
+    except Exception as e:
+        print(f"  {annee} : ECHEC init session : {e}")
 
-    with zipfile.ZipFile(io.BytesIO(z.content)) as archive:
-        nom_csv = next(n for n in archive.namelist() if n.lower().endswith(".csv"))
-        contenu = archive.read(nom_csv).decode("utf-8", errors="replace")
-        # on garde aussi les PDF de definitions, une seule fois
-        for nom_pdf in (n for n in archive.namelist() if n.lower().endswith(".pdf")):
-            dest = DATA_RAW / nom_pdf
-            if not dest.exists():
-                dest.write_bytes(archive.read(nom_pdf))
+    # 1) Requête avec critères
+    try:
+        r = session.get(SEARCH, params=criteres_annee(annee), timeout=60, verify=False)
+        r.raise_for_status()
+    except Exception as e:
+        print(f"  {annee} : ECHEC recherche : {e}")
+        return -1
 
-    # 3) controle : le site annonce lui-meme le nombre de lignes en 1re ligne
-    # le compteur n'est pas toujours en 1re ligne : certaines annees ajoutent
-    # d'abord un avertissement "ancienne version du formulaire". On le cherche
-    # dans les 5 premieres lignes.
-    nb = -1
-    for ligne in contenu.splitlines()[:5]:
-        m = re.search(r"crit[^:]*:\s*(\d+)", ligne)
-        if m:
-            nb = int(m.group(1))
-            break
-    if nb >= LIMITE_LIGNES:
-        print(
-            f"  !! {annee} : {nb} lignes = limite atteinte, il faut decouper "
-            f"cette annee par departement ou par mois."
-        )
+    # 2) Téléchargement du ZIP
+    try:
+        z = session.get(ZIP, timeout=120, verify=False)
+        z.raise_for_status()
+    except Exception as e:
+        print(f"  {annee} : ECHEC ZIP : {e}")
+        return -1
 
-    cible.write_text(contenu, encoding="utf-8")
-    print(f"  {annee} : {nb} incendies -> {cible.name}")
-    return nb
+    # 3) Extraction
+    try:
+        with zipfile.ZipFile(io.BytesIO(z.content)) as archive:
+            nom_csv = next(n for n in archive.namelist() if n.lower().endswith(".csv"))
+            contenu = archive.read(nom_csv).decode("utf-8", errors="replace")
+
+            for nom_pdf in (
+                n for n in archive.namelist() if n.lower().endswith(".pdf")
+            ):
+                dest = DATA_RAW / nom_pdf
+                if not dest.exists():
+                    dest.write_bytes(archive.read(nom_pdf))
+
+        # Compteur
+        nb = -1
+        for ligne in contenu.splitlines()[:5]:
+            m = re.search(r"crit[^:]*:\s*(\d+)", ligne)
+            if m:
+                nb = int(m.group(1))
+                break
+
+        cible.write_text(contenu, encoding="utf-8")
+        print(f"  {annee} : {nb} incendies -> {cible.name}")
+        return nb
+
+    except Exception as e:
+        print(f"  {annee} : ECHEC extraction : {e}")
+        return -1
 
 
 def main(annee_min: int = ANNEE_MIN, annee_max: int = ANNEE_MAX) -> None:
