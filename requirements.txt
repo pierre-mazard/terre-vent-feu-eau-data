@@ -6,3 +6,4 @@ requests
 rich
 SQLAlchemy
 streamlit
+python-dotenv
