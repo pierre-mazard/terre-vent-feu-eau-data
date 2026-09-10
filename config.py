@@ -9,6 +9,7 @@ from sqlalchemy import create_engine
 ROOT = Path(__file__).resolve().parent
 load_dotenv(ROOT / ".env")
 
+
 # ---------------------------------------------------------------------------
 # Chemins du projet
 # ---------------------------------------------------------------------------
@@ -27,11 +28,11 @@ SSL_VERIFY = os.getenv("SSL_VERIFY", "true").strip().lower() not in ("false", "0
 # ---------------------------------------------------------------------------
 # Base de données
 # ---------------------------------------------------------------------------
-DB_USER = os.getenv("DB_USER", "tvfed")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "")
-DB_NAME = os.getenv("DB_NAME", "tvfed")
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = os.getenv("DB_PORT", "5432")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+DB_NAME = os.getenv("DB_NAME")
+DB_HOST = os.getenv("DB_HOST")
+DB_PORT = os.getenv("DB_PORT")
 
 DB_URL = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
