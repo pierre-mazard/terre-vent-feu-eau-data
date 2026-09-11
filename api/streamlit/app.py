@@ -221,10 +221,16 @@ def main() -> None:
                 f"Zone DBSCAN : {int(resultat['cluster_spatial'])}."
             )
             st.metric("ROC-AUC du test temporel", f"{metriques['roc_auc']:.3f}")
+            st.metric("PR-AUC du test temporel", f"{metriques['pr_auc']:.3f}")
             st.caption(
                 "ROC-AUC validation geographique : "
                 f"{metriques['roc_auc_validation_geographique']:.3f} "
                 f"({metriques['communes_test_geographique']} communes tenues a l'ecart)."
+            )
+            st.caption(
+                f"PR-AUC baseline : {metriques['pr_auc_baseline']:.3f} | "
+                f"Brier : {metriques['brier_score']:.4f} | "
+                f"Rappel du top 5 % : {metriques['rappel_top_5pct']:.1%}."
             )
 
     with onglet_methodo:

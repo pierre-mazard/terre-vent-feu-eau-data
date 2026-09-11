@@ -10,10 +10,12 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.cluster import DBSCAN, KMeans
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import (
-    accuracy_score,
     balanced_accuracy_score,
+    brier_score_loss,
+    average_precision_score,
     roc_auc_score,
     silhouette_score,
 )
@@ -35,6 +37,11 @@ FEATURE_COLUMNS = [
     "surface_10a_ha",
     "surface_moyenne_5a_ha",
     "part_feux_ete_5a",
+    "mois_reference",
+    "mois_sin",
+    "mois_cos",
+    "cluster_risque",
+    "cluster_spatial",
     "latitude",
     "longitude",
     "population",
@@ -42,14 +49,20 @@ FEATURE_COLUMNS = [
     "altitude_moy",
     "superficie_km2",
 ]
+CLUSTER_INPUT_COLUMNS = [
+    column
+    for column in FEATURE_COLUMNS
+    if column not in {"cluster_risque", "cluster_spatial"}
+]
 
 
 def charger_donnees() -> tuple[pd.DataFrame, pd.DataFrame]:
     incendies_sql = text(
         """
-        SELECT code_insee, annee, mois, surface_parcourue_ha,
-               surface_foret_ha
-        FROM fires
+         SELECT f.code_insee, f.annee, f.mois, f.surface_parcourue_ha,
+             f.surface_foret_ha, c.latitude, c.longitude
+         FROM fires f
+         LEFT JOIN ref_communes c ON c.code_insee = f.code_insee
         WHERE annee >= :annee_debut
         """
     )
@@ -123,17 +136,51 @@ def construire_features(incendies: pd.DataFrame, communes: pd.DataFrame) -> pd.D
         lambda serie: serie.shift(1).rolling(5, min_periods=1).sum()
     ) / panel["nb_feux_5a"].replace(0, np.nan)
     panel["part_feux_ete_5a"] = panel["part_feux_ete_5a"].fillna(0)
+    mensuel = (
+        incendies.groupby(["code_insee", "annee", "mois"])
+        .size()
+        .unstack(fill_value=0)
+        .reindex(columns=range(1, 13), fill_value=0)
+        .reset_index()
+    )
+    mensuel = panel[["code_insee", "annee"]].merge(
+        mensuel, on=["code_insee", "annee"], how="left"
+    ).fillna(0)
+    for mois in range(1, 13):
+        mensuel[mois] = mensuel.groupby("code_insee")[mois].transform(
+            lambda serie: serie.shift(1).rolling(5, min_periods=1).sum()
+        )
+    mensuel["mois_reference"] = (
+        mensuel[list(range(1, 13))].fillna(0).idxmax(axis=1).astype(float)
+    )
+    panel["mois_reference"] = pd.to_numeric(
+        mensuel["mois_reference"], errors="coerce"
+    ).fillna(8.0).to_numpy()
+    panel["mois_sin"] = np.sin(2 * np.pi * panel["mois_reference"].to_numpy() / 12)
+    panel["mois_cos"] = np.cos(2 * np.pi * panel["mois_reference"].to_numpy() / 12)
     panel["feux_annee_suivante"] = groupe["nb_feux"].shift(-1).fillna(0)
     panel["cible_incendie_suivant"] = (panel["feux_annee_suivante"] > 0).astype(int)
     return panel
 
 
-def ajouter_clusters(features: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
-    reference = features[features["annee"] == ANNEE_TEST].copy()
-    matrice = reference[FEATURE_COLUMNS].replace([np.inf, -np.inf], np.nan).fillna(0)
+def ajouter_clusters(
+    features: pd.DataFrame, incendies: pd.DataFrame
+) -> tuple[pd.DataFrame, dict]:
+    reference = features[features["annee"] == ANNEE_TEST - 1].copy()
+    matrice = reference[CLUSTER_INPUT_COLUMNS].replace([np.inf, -np.inf], np.nan).fillna(0)
     scaler = StandardScaler()
     matrice_standardisee = scaler.fit_transform(matrice)
-    nombre_groupes = 4
+    inerties = {}
+    silhouettes = {}
+    for nombre_groupes in range(2, 8):
+        candidat = KMeans(n_clusters=nombre_groupes, random_state=42, n_init=20)
+        etiquettes = candidat.fit_predict(matrice_standardisee)
+        inerties[nombre_groupes] = float(candidat.inertia_)
+        silhouettes[nombre_groupes] = float(silhouette_score(
+            matrice_standardisee, etiquettes,
+            sample_size=min(10000, len(reference)), random_state=42,
+        ))
+    nombre_groupes = max(silhouettes, key=silhouettes.get)
     kmeans = KMeans(n_clusters=nombre_groupes, random_state=42, n_init=20)
     reference["cluster_risque"] = kmeans.fit_predict(matrice_standardisee)
     silhouette = silhouette_score(
@@ -143,16 +190,24 @@ def ajouter_clusters(features: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
         random_state=42,
     )
 
-    coordonnees = reference[["latitude", "longitude"]].dropna().copy()
-    radians = np.radians(coordonnees.to_numpy())
+    feux_geo = incendies.dropna(subset=["latitude", "longitude"])[
+        ["code_insee", "latitude", "longitude"]
+    ].drop_duplicates()
+    radians = np.radians(feux_geo[["latitude", "longitude"]].to_numpy())
     dbscan = DBSCAN(
-        eps=50 / 6371,
-        min_samples=5,
+        eps=20 / 6371,
+        min_samples=8,
         metric="haversine",
     )
     labels = dbscan.fit_predict(radians)
-    reference["cluster_spatial"] = -1
-    reference.loc[coordonnees.index, "cluster_spatial"] = labels
+    feux_geo["cluster_spatial"] = labels
+    clusters_communes = (
+        feux_geo[feux_geo["cluster_spatial"] >= 0]
+        .groupby("code_insee")["cluster_spatial"]
+        .agg(lambda valeurs: int(valeurs.mode().iloc[0]))
+        .rename("cluster_spatial")
+    )
+    reference["cluster_spatial"] = reference["code_insee"].map(clusters_communes).fillna(-1)
 
     features = features.merge(
         reference[["code_insee", "cluster_risque", "cluster_spatial"]],
@@ -161,11 +216,13 @@ def ajouter_clusters(features: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     )
     return features, {
         "kmeans_groupes": nombre_groupes,
+        "kmeans_inerties": inerties,
+        "kmeans_silhouettes": silhouettes,
         "silhouette_kmeans": float(silhouette),
-        "dbscan_distance_km": 50,
+        "dbscan_distance_km": 20,
         "dbscan_groupes_hors_bruit": int(len(set(labels)) - (1 if -1 in labels else 0)),
         "dbscan_points_bruit": int((labels == -1).sum()),
-        "annee_reference_clusters": ANNEE_TEST,
+        "annee_reference_clusters": ANNEE_TEST - 1,
         "feature_columns": FEATURE_COLUMNS,
     },
 
@@ -178,7 +235,7 @@ def entrainer_modele(features: pd.DataFrame) -> tuple[RandomForestClassifier, di
     matrice_test = test[FEATURE_COLUMNS].replace([np.inf, -np.inf], np.nan).fillna(0)
     cible_train = entrainement["cible_incendie_suivant"]
     cible_test = test["cible_incendie_suivant"]
-    modele = RandomForestClassifier(
+    modele_base = RandomForestClassifier(
         n_estimators=200,
         max_depth=12,
         min_samples_leaf=3,
@@ -186,14 +243,20 @@ def entrainer_modele(features: pd.DataFrame) -> tuple[RandomForestClassifier, di
         random_state=42,
         n_jobs=-1,
     )
+    modele = CalibratedClassifierCV(modele_base, method="sigmoid", cv=3)
     modele.fit(matrice_train, cible_train)
     probabilites = modele.predict_proba(matrice_test)[:, 1]
     predictions = (probabilites >= 0.5).astype(int)
+    seuil_top5 = np.quantile(probabilites, 0.95)
+    vrais_top5 = cible_test[probabilites >= seuil_top5]
     metriques = {
         "annees_entrainement": "2011-2022",
         "annee_test": ANNEE_TEST,
         "roc_auc": float(roc_auc_score(cible_test, probabilites)),
-        "accuracy": float(accuracy_score(cible_test, predictions)),
+        "pr_auc": float(average_precision_score(cible_test, probabilites)),
+        "pr_auc_baseline": float(cible_test.mean()),
+        "brier_score": float(brier_score_loss(cible_test, probabilites)),
+        "rappel_top_5pct": float(vrais_top5.mean()) if len(vrais_top5) else 0.0,
         "balanced_accuracy": float(balanced_accuracy_score(cible_test, predictions)),
         "taux_incendie_test": float(cible_test.mean()),
     }
@@ -205,7 +268,7 @@ def entrainer_modele(features: pd.DataFrame) -> tuple[RandomForestClassifier, di
     codes_test = set(codes[decoupage:])
     entrainement_geo = entrainement[entrainement["code_insee"].isin(codes_train)]
     test_geo = test[test["code_insee"].isin(codes_test)]
-    modele_geo = RandomForestClassifier(
+    modele_geo_base = RandomForestClassifier(
         n_estimators=150,
         max_depth=12,
         min_samples_leaf=3,
@@ -213,6 +276,7 @@ def entrainer_modele(features: pd.DataFrame) -> tuple[RandomForestClassifier, di
         random_state=42,
         n_jobs=-1,
     )
+    modele_geo = CalibratedClassifierCV(modele_geo_base, method="sigmoid", cv=3)
     modele_geo.fit(
         entrainement_geo[FEATURE_COLUMNS].replace([np.inf, -np.inf], np.nan).fillna(0),
         entrainement_geo["cible_incendie_suivant"],
@@ -242,7 +306,7 @@ def main() -> None:
     MODELS.mkdir(parents=True, exist_ok=True)
     incendies, communes = charger_donnees()
     features = construire_features(incendies, communes)
-    features, clusters = ajouter_clusters(features)
+    features, clusters = ajouter_clusters(features, incendies)
     modele, metriques, scores = entrainer_modele(features)
     features[features["annee"].isin([ANNEE_TEST, ANNEE_FIN])].to_csv(
         DATA_PROCESSED / "features_risque.csv", index=False

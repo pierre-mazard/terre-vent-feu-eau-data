@@ -84,6 +84,38 @@
 			],
 			"isBackground": false,
 			"problemMatcher": []
+		},
+		{
+			"label": "Executer jour 4 corrige",
+			"type": "shell",
+			"command": "C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+			"args": [
+				"data/ingestion_pipeline/jour4_model.py"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Rerun jour 4 corrige",
+			"type": "shell",
+			"command": "C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+			"args": [
+				"data/ingestion_pipeline/jour4_model.py"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Tests finaux jour 4",
+			"type": "shell",
+			"command": "C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"-q"
+			],
+			"isBackground": false,
+			"problemMatcher": []
 		}
 	]
 }
