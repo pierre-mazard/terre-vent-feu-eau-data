@@ -9,5 +9,7 @@ test:
 	pytest -q
 run-pipeline:
 	python -m data.ingestion_pipeline.pipeline
+run-model:
+	python data/ingestion_pipeline/jour4_model.py
 run-streamlit:
 	streamlit run api/streamlit/app.py

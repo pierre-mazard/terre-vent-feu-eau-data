@@ -1,6 +1,7 @@
 """Application Streamlit de cartographie et d'analyse historique."""
 
 import sys
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -64,6 +65,22 @@ def _categorie_vegetation(donnees: pd.DataFrame) -> pd.Series:
     categories.loc[maquis & ~foret] = "Maquis / garrigues"
     categories.loc[agricole & ~foret & ~maquis] = "Agricole"
     return categories
+
+
+@st.cache_data(ttl=3600)
+def charger_scores_risque() -> tuple[pd.DataFrame, dict]:
+    scores_path = RACINE / "data" / "processed" / "scores_risque.csv"
+    metriques_path = RACINE / "models" / "metriques_risque.json"
+    if not scores_path.exists() or not metriques_path.exists():
+        raise FileNotFoundError(
+            "Les scores du jour 4 sont absents. Lancez "
+            "python data/ingestion_pipeline/jour4_model.py."
+        )
+    scores = pd.read_csv(scores_path)
+    if "annee_prediction" not in scores:
+        scores["annee_prediction"] = scores["annee"] + 1
+    metriques = json.loads(metriques_path.read_text(encoding="utf-8"))
+    return scores, metriques
 
 
 def main() -> None:
@@ -175,7 +192,40 @@ def main() -> None:
 
     with onglet_prediction:
         st.subheader("Prediction du risque par commune")
-        st.info("Le modele de risque et les features seront construits au jour 4.")
+        try:
+            scores, metriques = charger_scores_risque()
+        except Exception as erreur:
+            st.error(str(erreur))
+        else:
+            st.caption(
+                "Score historique de l'occurrence d'un feu l'annee suivante. "
+                "Ce resultat n'est pas une alerte meteorologique."
+            )
+            noms = scores["nom"].fillna("Commune sans nom")
+            options = (scores["code_insee"].astype(str) + " - " + noms).sort_values().tolist()
+            commune_choisie = st.selectbox("Commune", options)
+            code_choisi = commune_choisie.split(" - ", 1)[0]
+            resultat = scores[scores["code_insee"].astype(str) == code_choisi].iloc[0]
+            indicateurs = st.columns(4)
+            indicateurs[0].metric("Periode predite", int(resultat["annee_prediction"]))
+            indicateurs[1].metric("Score historique", f"{resultat['score_risque']:.2f}/100")
+            indicateurs[2].metric("Niveau", resultat["niveau_risque"])
+            indicateurs[3].metric("Probabilite estimee", f"{resultat['probabilite_incendie']:.1%}")
+            st.write(
+                f"Historique des 5 annees precedentes : "
+                f"{resultat['nb_feux_5a']:.0f} feux et "
+                f"{resultat['surface_5a_ha']:.1f} ha parcourus."
+            )
+            st.write(
+                f"Profil KMeans : groupe {int(resultat['cluster_risque'])}. "
+                f"Zone DBSCAN : {int(resultat['cluster_spatial'])}."
+            )
+            st.metric("ROC-AUC du test temporel", f"{metriques['roc_auc']:.3f}")
+            st.caption(
+                "ROC-AUC validation geographique : "
+                f"{metriques['roc_auc_validation_geographique']:.3f} "
+                f"({metriques['communes_test_geographique']} communes tenues a l'ecart)."
+            )
 
     with onglet_methodo:
         st.subheader("Methodologie")
