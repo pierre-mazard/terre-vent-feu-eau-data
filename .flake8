@@ -1,0 +1,16 @@
+# flake8 ne lit PAS pyproject.toml (contrairement a black, bandit ou pytest).
+# Sans ce fichier, la section [tool.flake8] de pyproject.toml est ignoree et
+# flake8 retombe sur sa limite par defaut de 79 caracteres -- alors que black
+# reformate a 88. Les deux outils se contredisent et la CI echoue forcement.
+[flake8]
+max-line-length = 88
+# E203 et W503 sont incompatibles avec le style de black : recommandation
+# officielle du projet black.
+extend-ignore = E203, W503
+exclude =
+    .git,
+    __pycache__,
+    build,
+    dist,
+    .venv,
+    venv
