@@ -1,0 +1,15 @@
+numpy
+pandas
+matplotlib
+seaborn
+pytest
+PyYAML
+requests
+rich
+SQLAlchemy
+streamlit
+python-dotenv
+truststore
+psycopg2-binary
+scikit-learn
+joblib

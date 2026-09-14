@@ -1,0 +1,90 @@
+---
+name: CI Pipeline
+
+on:
+  pull_request: {}
+  push:
+    branches:
+      - develop
+      - feature/**
+      - hotfix/**
+
+jobs:
+  build-test-lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+          allowed-endpoints: |
+            pypi.org:443
+            files.pythonhosted.org:443
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Force Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: |
+            ${{ runner.os }}-pip-${{
+              hashFiles('requirements.txt', 'requirements_dev.txt')
+            }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          pip install \
+            --index-url https://pypi.org/simple \
+            --retries 10 \
+            --timeout 60 \
+            -r requirements.txt
+
+          pip install \
+            --index-url https://pypi.org/simple \
+            --retries 10 \
+            --timeout 60 \
+            -r requirements_dev.txt
+
+      - name: Lint (flake8)
+        run: flake8 .
+
+      - name: Format check (black)
+        run: black --check .
+
+      - name: Security scan (Bandit)
+        run: bandit -c .bandit -r .
+
+      - name: Dependency security audit
+        run: pip-audit
+
+      - name: Run tests
+        run: pytest -q
+
+      - name: Validate SQL schema
+        run: |
+          if [ -f data/sql/create_tables.sql ]; then
+            echo "SQL schema found"
+          else
+            echo "Missing SQL schema" && exit 1
+          fi
+
+      - name: Validate Streamlit build
+        run: python -m py_compile api/streamlit/*.py
+
+      - name: Validate workflow YAML
+        run: yamllint .github/workflows/
