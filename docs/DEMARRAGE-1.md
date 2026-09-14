@@ -11,16 +11,6 @@ Ce guide te mène de l'ordinateur allumé jusqu'à l'application Streamlit.
 
 ---
 
-## 👉 Commence ici : dans quelle situation es-tu ?
-
-| Ta situation | Va à | Durée |
-|---|---|---|
-| **J'ai éteint ou redémarré mon ordinateur**, tout marchait avant | **Partie 1** | ⏱️ **2 min** |
-| Le projet est installé mais **la base est vide** ou l'onglet prédiction plante | **Partie 2** | ⏱️ 20 min |
-| **Je pars de zéro** : nouvel ordinateur, ou premier clone du dépôt | **Partie 3** | ⏱️ 45 min |
-
----
----
 
 # Partie 1 · Redémarrage quotidien — 2 minutes
 
