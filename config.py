@@ -4,18 +4,32 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine
 
 # ---------------------------------------------------------------------------
-# Chargement du .env
+# Chargement intelligent du .env (compatible Streamlit, Docker, scripts)
 # ---------------------------------------------------------------------------
-ROOT = Path(__file__).resolve().parent
-load_dotenv(ROOT / ".env")
 
+# Dossier où se trouve config.py
+PROJECT_ROOT = Path(__file__).resolve().parent
+
+# Chemin principal du .env
+ENV_FILE = PROJECT_ROOT / ".env"
+
+# Si Streamlit est lancé depuis api/streamlit/, le .env est un cran au-dessus
+if not ENV_FILE.exists():
+    ENV_FILE = PROJECT_ROOT.parent / ".env"
+
+# Si Docker lance depuis un autre contexte, on remonte encore
+if not ENV_FILE.exists():
+    ENV_FILE = PROJECT_ROOT.parent.parent / ".env"
+
+# Chargement final
+load_dotenv(ENV_FILE)
 
 # ---------------------------------------------------------------------------
 # Chemins du projet
 # ---------------------------------------------------------------------------
-DATA_RAW = ROOT / "data" / "raw"
-DATA_PROCESSED = ROOT / "data" / "processed"
-MODELS = ROOT / "models"
+DATA_RAW = PROJECT_ROOT / "data" / "raw"
+DATA_PROCESSED = PROJECT_ROOT / "data" / "processed"
+MODELS = PROJECT_ROOT / "models"
 
 for d in (DATA_RAW, DATA_PROCESSED, MODELS):
     d.mkdir(parents=True, exist_ok=True)
@@ -35,6 +49,12 @@ DB_HOST = os.getenv("DB_HOST")
 DB_PORT = os.getenv("DB_PORT")
 
 DB_URL = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+print("DB_USER =", DB_USER)
+print("DB_PASSWORD =", DB_PASSWORD)
+print("DB_HOST =", DB_HOST)
+print("DB_PORT =", DB_PORT)
+print("DB_NAME =", DB_NAME)
+print("DB_URL =", DB_URL)
 
 
 def get_engine():
