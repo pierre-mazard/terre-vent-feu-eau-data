@@ -13,3 +13,7 @@ truststore
 psycopg2-binary
 scikit-learn
 joblib
+scikit-learn
+plotly
+shap
+matplotlib

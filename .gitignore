@@ -219,12 +219,17 @@ __marimo__/
 
 
 # schema SQL vivent sous data/ dans ce depot.
-data/raw/
-data/processed/
+
+data/processed/run
 data/interim/
 
+# tous les fichier data/raw/bdiff_....
+data/raw/bdiff_*
+
+data/raw/communes_france.csv
+
 # Modeles entraines
-models/
+models/run
 *.joblib
 *.pkl
 

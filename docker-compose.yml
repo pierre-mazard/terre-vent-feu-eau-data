@@ -14,7 +14,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:?definir DB_PASSWORD dans le .env}
       POSTGRES_DB: ${DB_NAME:-tvfed}
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "55432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./data/sql/create_tables.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
@@ -23,6 +23,23 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  ml:
+    build:
+      context: .
+      dockerfile: Dockerfile.ml
+    container_name: tvfed_ml
+    depends_on:
+      - db
+    environment:
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      DB_HOST: db
+      DB_PORT: ${DB_PORT}
+    volumes:
+      - .:/app
+
 
   streamlit:
     build:

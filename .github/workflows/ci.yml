@@ -86,5 +86,35 @@ jobs:
       - name: Validate Streamlit build
         run: python -m py_compile api/streamlit/*.py
 
+      - name: Run ML training pipeline
+        run: |
+          python models/train_test/train_model.py
+
+      - name: Run ML evaluation
+        run: |
+          python models/train_test/evaluate_model.py
+
+      - name: Run ML cross-validation
+        run: |
+          python models/train_test/cross_validation.py
+
+      - name: Validate ML artifacts
+        run: |
+          test -f models/models/model_risque.joblib
+          test -f models/models/metadata.json
+          test -f data/processed/scores_risque.csv
+          test -f data/processed/features_risque.csv
+
+      - name: Upload ML artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ml-artifacts
+          path: |
+            models/models/model_risque.joblib
+            models/models/metadata.json
+            data/processed/scores_risque.csv
+            data/processed/features_risque.csv
+
+
       - name: Validate workflow YAML
         run: yamllint .github/workflows/
