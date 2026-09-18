@@ -5,8 +5,8 @@ from pathlib import Path
 from hashlib import sha256
 
 from config import DATA_PROCESSED, MODELS
-from models.config_pipeline import ANNEE_FIN, ANNEE_TEST
-from models.pipeline.training import train_model
+from models.config_pipeline import ANNEE_DEBUT_TRAIN, ANNEE_FIN, ANNEE_TEST
+from models.pipeline.training import decouper, train_model
 from models.pipeline.score_future import score_future
 
 # Chargement du dernier run
@@ -19,10 +19,22 @@ MODEL_RUN_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def compute_split_report(features: pd.DataFrame) -> dict:
-    train = features[features["annee"] < ANNEE_TEST]
-    test = features[features["annee"] == ANNEE_TEST]
+    """Decrit le decoupage train/test reellement utilise.
+
+    On appelle `decouper()` du module d'entrainement au lieu de refaire le
+    filtre ici. Refaire le filtre avait un cout cache : `training.py` est passe
+    a un debut en 2011 (avant, `nb_feux_10a` est calcule sur moins de dix ans
+    d'historique), mais ce rapport, lui, annoncait toujours 2006-2022. Le
+    `split_hash` decrivait donc un decoupage qui n'etait pas celui sur lequel
+    le modele avait appris — une trace de reproductibilite fausse, ce qui est
+    pire que pas de trace du tout.
+
+    Une seule source de verite : si `decouper()` change, ce rapport suit.
+    """
+    train, test = decouper(features)
 
     report = {
+        "annee_debut_train": int(ANNEE_DEBUT_TRAIN),
         "annee_test": int(ANNEE_TEST),
         "train_rows": len(train),
         "test_rows": len(test),
