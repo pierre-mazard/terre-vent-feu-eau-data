@@ -1,0 +1,121 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Lancer Streamlit jour 3",
+			"type": "shell",
+			"command": "C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+			"args": [
+				"-m",
+				"streamlit",
+				"run",
+				"api/streamlit/app.py",
+				"--server.headless",
+				"true",
+				"--server.port",
+				"8502"
+			],
+			"isBackground": true,
+			"problemMatcher": []
+		},
+		{
+			"label": "Executer le modele jour 4",
+			"type": "shell",
+			"command": "C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+			"args": [
+				"data/ingestion_pipeline/jour4_model.py"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Regenerer les scores jour 4",
+			"type": "shell",
+			"command": "C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+			"args": [
+				"data/ingestion_pipeline/jour4_model.py"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Valider modele jour 4",
+			"type": "shell",
+			"command": "C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+			"args": [
+				"data/ingestion_pipeline/jour4_model.py"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Tester le projet jour 4",
+			"type": "shell",
+			"command": "C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"-q"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Installer pytest projet",
+			"type": "shell",
+			"command": "C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+			"args": [
+				"-m",
+				"pip",
+				"install",
+				"pytest"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Relancer tests projet",
+			"type": "shell",
+			"command": "C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"-q"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Executer jour 4 corrige",
+			"type": "shell",
+			"command": "C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+			"args": [
+				"data/ingestion_pipeline/jour4_model.py"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Rerun jour 4 corrige",
+			"type": "shell",
+			"command": "C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+			"args": [
+				"data/ingestion_pipeline/jour4_model.py"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Tests finaux jour 4",
+			"type": "shell",
+			"command": "C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"-q"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}

@@ -195,9 +195,9 @@ cython_debug/
 .abstra/
 
 # Visual Studio Code
-#   Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
+#   Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore
 #   that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
-#   and can be added to the global gitignore or merged into this file. However, if you prefer, 
+#   and can be added to the global gitignore or merged into this file. However, if you prefer,
 #   you could uncomment the following to ignore the entire vscode folder
 # .vscode/
 # Temporary file for partial code execution
@@ -216,3 +216,25 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+
+# schema SQL vivent sous data/ dans ce depot.
+
+data/processed/run
+data/interim/
+
+# tous les fichier data/raw/bdiff_....
+data/raw/bdiff_*
+
+data/raw/communes_france.csv
+
+# Modeles entraines
+models/run
+*.joblib
+*.pkl
+
+# Configuration locale
+.env
+
+# Sauvegardes locales d'artefacts (verifier_etat.py --sauvegarder)
+sauvegardes/
