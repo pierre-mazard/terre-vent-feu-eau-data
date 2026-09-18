@@ -235,3 +235,6 @@ models/run
 
 # Configuration locale
 .env
+
+# Sauvegardes locales d'artefacts (verifier_etat.py --sauvegarder)
+sauvegardes/

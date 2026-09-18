@@ -171,18 +171,43 @@ def _lire_historique(chemin: str, _cle: float) -> pd.DataFrame:
     return df
 
 
+@st.cache_data(show_spinner="Chargement de l'historique…", persist="disk")
+def _lire_historique_parquet(chemin: str, _cle: float) -> pd.DataFrame:
+    df = pd.read_parquet(chemin)
+    df["code_insee"] = df["code_insee"].astype(str).str.zfill(5)
+    return df
+
+
 def charger_historique() -> pd.DataFrame:
-    """Serie annuelle par commune, en 5 colonnes seulement."""
+    """Serie annuelle par commune, en 5 colonnes seulement.
+
+    Trois sources possibles, par ordre de preference :
+      1. `features_risque.csv` du run de modeles ;
+      2. `features_final.csv` du run de donnees ;
+      3. `historique_annuel.parquet`, une version allegee de secours qui ne
+         contient que les cinq colonnes utiles a cette page. Elle depanne quand
+         le gros CSV de 157 Mo n'est pas sur la machine, mais elle ne remplace
+         pas un vrai run : le pipeline la regenere.
+    """
     run_dir, model_run_dir = dossiers_run()
-    chemin = model_run_dir / "features_risque.csv"
-    if not chemin.exists():
-        chemin = run_dir / "features_final.csv"
-    chemin = exige(
-        chemin,
-        "Le fichier des variables (`features_risque.csv` ou `features_final.csv`)",
-        "python -m models.pipeline.build_dataset",
+
+    for chemin in (
+        model_run_dir / "features_risque.csv",
+        run_dir / "features_final.csv",
+    ):
+        if chemin.exists():
+            return _lire_historique(str(chemin), _mtime(chemin))
+
+    secours = model_run_dir / "historique_annuel.parquet"
+    if secours.exists():
+        return _lire_historique_parquet(str(secours), _mtime(secours))
+
+    _arret(
+        "Le fichier des variables est introuvable.\n\n"
+        f"Attendu ici : `{model_run_dir / 'features_risque.csv'}`",
+        "Regenere-le avec :\n\n`python -m models.pipeline.build_dataset`\n\n"
+        "puis `python -m models.train_test.train_model`",
     )
-    return _lire_historique(str(chemin), _mtime(chemin))
 
 
 @st.cache_data(show_spinner=False)
