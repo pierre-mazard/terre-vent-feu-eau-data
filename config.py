@@ -27,6 +27,7 @@ load_dotenv(ENV_FILE)
 # ---------------------------------------------------------------------------
 # Chemins du projet
 # ---------------------------------------------------------------------------
+ROOT = PROJECT_ROOT
 DATA_RAW = PROJECT_ROOT / "data" / "raw"
 DATA_PROCESSED = PROJECT_ROOT / "data" / "processed"
 MODELS = PROJECT_ROOT / "models"

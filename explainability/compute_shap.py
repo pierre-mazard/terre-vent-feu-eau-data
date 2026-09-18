@@ -84,9 +84,10 @@ raw_shap = explainer.shap_values(X)
 if isinstance(raw_shap, list):
     shap_values = raw_shap[1]
 
-# Cas 2 : SHAP renvoie un tenseur (N, 2, F) → prendre la classe 1
+# Cas 2 : SHAP renvoie un tenseur (N, F, 2) → prendre la classe 1
+# (versions recentes de shap : dernier axe = classes, pas le second)
 elif raw_shap.ndim == 3:
-    shap_values = raw_shap[:, 1, :]
+    shap_values = raw_shap[:, :, 1]
 
 # Cas 3 : SHAP mono-output → rien à faire
 else:

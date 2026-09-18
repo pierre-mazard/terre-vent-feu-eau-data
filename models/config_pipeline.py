@@ -7,6 +7,11 @@ ANNEE_DEBUT = 2006
 ANNEE_FIN = 2024
 ANNEE_TEST = 2023
 
+# Premiere annee utilisee pour l'entrainement. Avant 2011, la fenetre glissante
+# de dix ans est calculee sur moins de dix ans d'historique (min_periods=1) :
+# la variable nb_feux_10a ne veut alors rien dire.
+ANNEE_DEBUT_TRAIN = 2011
+
 # Colonnes utilisées pour l'entraînement
 FEATURE_COLUMNS = [
     "nb_feux_5a",

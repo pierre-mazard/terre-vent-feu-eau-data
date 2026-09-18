@@ -47,14 +47,18 @@ def add_clusters(features: pd.DataFrame, incendies: pd.DataFrame):
         km = KMeans(n_clusters=k, random_state=42, n_init=20)
         labels_k = km.fit_predict(matrice_std)
         inerties[k] = float(km.inertia_)
-        silhouettes[k] = float(
-            silhouette_score(
-                matrice_std,
-                labels_k,
-                sample_size=min(10000, len(reference)),
-                random_state=42,
+        try:
+            silhouettes[k] = float(
+                silhouette_score(
+                    matrice_std,
+                    labels_k,
+                    sample_size=min(10000, len(reference)),
+                    random_state=42,
+                )
             )
-        )
+        except ValueError:
+            # echantillon degenere (un seul label present) : ce k est ecarte
+            silhouettes[k] = float("-inf")
 
     best_k = max(silhouettes, key=silhouettes.get)
     print("   - meilleur k (risque):", best_k)
@@ -62,14 +66,17 @@ def add_clusters(features: pd.DataFrame, incendies: pd.DataFrame):
     kmeans = KMeans(n_clusters=best_k, random_state=42, n_init=20)
     reference["cluster_risque"] = kmeans.fit_predict(matrice_std)
 
-    silhouette = float(
-        silhouette_score(
-            matrice_std,
-            reference["cluster_risque"],
-            sample_size=min(10000, len(reference)),
-            random_state=42,
+    try:
+        silhouette = float(
+            silhouette_score(
+                matrice_std,
+                reference["cluster_risque"],
+                sample_size=min(10000, len(reference)),
+                random_state=42,
+            )
         )
-    )
+    except ValueError:
+        silhouette = silhouettes[best_k]
 
     # --- DBSCAN SPATIAL ---
     feux_geo = incendies.dropna(subset=["latitude", "longitude"])[

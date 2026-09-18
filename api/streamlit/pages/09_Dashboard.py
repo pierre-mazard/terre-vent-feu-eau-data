@@ -1,172 +1,130 @@
 # api/streamlit/pages/09_Dashboard.py
-
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT))
+RACINE = Path(__file__).resolve().parents[3]
+if str(RACINE) not in sys.path:
+    sys.path.insert(0, str(RACINE))
 
-import streamlit as st
-import pandas as pd
-import json
-import numpy as np
-import pydeck as pdk
-import shap
-import joblib
-import matplotlib.pyplot as plt
+import streamlit as st  # noqa: E402
 
-from config import DATA_PROCESSED, MODELS
+from api.streamlit import donnees  # noqa: E402
 
-st.set_page_config(page_title="Dashboard global", layout="wide")
-st.title("📊 Dashboard global du risque incendie")
+st.set_page_config(page_title="Dashboard", page_icon="📈", layout="wide")
+st.title("📈 Synthese nationale et departementale")
 
-# Charger latest_run
-with open(DATA_PROCESSED / "latest_run.json") as f:
-    latest = json.load(f)
+scores = donnees.charger_scores()
+_, model_run_dir = donnees.dossiers_run()
+meta = donnees.lire_json_optionnel(model_run_dir / "metadata.json") or {}
+annee = meta.get("annee_score", int(scores["annee"].max()) + 1)
 
-run_dir = Path(latest["run_dir"])
-model_run_dir = MODELS / "run" / run_dir.name
+proba = scores["proba_incendie_suivant"]
 
-# Charger données
-df_scores = pd.read_csv(model_run_dir / "scores_risque.csv")
-df_features = pd.read_csv(model_run_dir / "features_risque.csv")
-df_all = df_features.merge(df_scores, on="code_insee", how="left")
-
-# Charger SHAP global
-shap_values = np.load(model_run_dir / "shap_values.npy", allow_pickle=True)
-feature_cols = json.loads((model_run_dir / "shap_feature_names.json").read_text())
-
-# Charger modèle brut pour SHAP local/département
-model_raw = joblib.load(model_run_dir / "model_risque_raw.joblib")
-explainer = shap.TreeExplainer(model_raw)
-
-# -----------------------------
-# 🗺️ CARTE DÉPARTEMENTALE
-# -----------------------------
-st.header("🗺️ Carte départementale des risques")
-
-dep = st.text_input("Code département (2 chiffres)", "13")
-
-df_dep = df_all[df_all["code_insee"].astype(str).str.startswith(dep)]
-
-if len(df_dep) == 0:
-    st.warning("Aucune commune trouvée dans ce département.")
-else:
-    layer = pdk.Layer(
-        "ScatterplotLayer",
-        df_dep,
-        get_position=["longitude", "latitude"],
-        get_radius=2000,
-        get_fill_color="[proba_incendie_suivant * 255, 50, 150, 160]",
-        pickable=True,
-    )
-
-    view_state = pdk.ViewState(
-        latitude=df_dep["latitude"].mean(),
-        longitude=df_dep["longitude"].mean(),
-        zoom=8,
-        pitch=45,
-    )
-
-    st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view_state))
-
-# -----------------------------
-# 📈 STATISTIQUES GLOBALES
-# -----------------------------
-st.header("📈 Statistiques globales")
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.metric("Nb communes", len(df_all))
-
-with col2:
-    st.metric("Proba moyenne", f"{df_all['proba_incendie_suivant'].mean():.3f}")
-
-with col3:
-    st.metric("Nb feux total", int(df_all["nb_feux"].sum()))
-
-# -----------------------------
-# 🔥 TOP 20 COMMUNES À RISQUE
-# -----------------------------
-st.subheader("🔥 Top 20 communes à risque")
-
-df_top = df_all.sort_values("proba_incendie_suivant", ascending=False).head(20)
-st.dataframe(
-    df_top[
-        [
-            "code_insee",
-            "nom",
-            "proba_incendie_suivant",
-            "nb_feux",
-            "surface_ha",
-            "cluster_risque",
-        ]
-    ]
+st.subheader(f"France entiere — prediction {annee}")
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Communes", f"{len(scores):,}".replace(",", " "))
+c2.metric("Probabilite moyenne", f"{proba.mean() * 100:.1f} %")
+c3.metric("Probabilite maximale", f"{proba.max() * 100:.1f} %")
+c4.metric(
+    "Top 5 % (surveillance ciblee)",
+    f"{int(len(scores) * 0.05):,}".replace(",", " "),
 )
 
-# -----------------------------
-# 🧠 SHAP — RANKING DÉPARTEMENTAL
-# -----------------------------
-st.header("🧠 SHAP — Importance des features dans le département")
-
-if len(df_dep) > 0:
-
-    X_dep = df_dep[feature_cols]
-    shap_dep = explainer.shap_values(X_dep)
-
-    # Importance moyenne absolue
-    shap_mean = np.abs(shap_dep).mean(axis=0)
-
-    df_rank = pd.DataFrame(
-        {"feature": feature_cols, "importance": shap_mean}
-    ).sort_values("importance", ascending=False)
-
-    st.subheader("Top features du département")
-    st.dataframe(df_rank.head(15))
-
-    # Bar plot SHAP départemental
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.barh(df_rank["feature"].head(15), df_rank["importance"].head(15))
-    ax.invert_yaxis()
-    ax.set_title(f"Importance SHAP — Département {dep}")
-    st.pyplot(fig)
-    plt.close(fig)
-
-else:
-    st.info("Sélectionnez un département pour afficher l'analyse SHAP.")
-
-st.info("""
-### ℹ️ SHAP départemental
-
-Cette section montre l'importance des features **uniquement pour les communes du département sélectionné**.
-
-Cela permet de comprendre :
-
-- quelles variables influencent le plus le risque dans ce territoire,
-- si les facteurs de risque sont différents d'un département à l'autre,
-- quelles interactions entre variables sont spécifiques au département.
-
-Les valeurs SHAP sont **moyennées** sur toutes les communes du département.
-""")
-
-
-# --- SHAP INTERACTIONS DÉPARTEMENT ---
-st.header("🧠 SHAP — Interactions des features dans le département")
-
-if len(df_dep) > 0:
-    X_dep = df_dep[feature_cols]
-    shap_inter_dep = shap.TreeExplainer(model_raw).shap_interaction_values(X_dep)
-
-    feature_i = st.selectbox("Feature 1 (département)", feature_cols, index=0)
-    feature_j = st.selectbox("Feature 2 (département)", feature_cols, index=1)
-
-    i_idx = feature_cols.index(feature_i)
-    j_idx = feature_cols.index(feature_j)
-
-    fig, ax = plt.subplots(figsize=(10, 6))
-    shap.dependence_plot(
-        (i_idx, j_idx), shap_inter_dep, X_dep, feature_names=feature_cols, show=False
+st.subheader("Classement des departements")
+par_dep = (
+    scores.groupby("departement")
+    .agg(
+        communes=("code_insee", "size"),
+        proba_moyenne=("proba_incendie_suivant", "mean"),
+        proba_max=("proba_incendie_suivant", "max"),
+        feux_5a=("nb_feux_5a", "sum"),
     )
-    st.pyplot(fig)
-    plt.close(fig)
+    .sort_values("proba_moyenne", ascending=False)
+)
+par_dep["proba_moyenne"] = (par_dep["proba_moyenne"] * 100).round(2)
+par_dep["proba_max"] = (par_dep["proba_max"] * 100).round(1)
+
+g1, g2 = st.columns([2, 3])
+with g1:
+    st.bar_chart(par_dep["proba_moyenne"].head(20), height=420)
+with g2:
+    st.dataframe(
+        par_dep.reset_index().rename(
+            columns={
+                "departement": "Departement",
+                "communes": "Communes",
+                "proba_moyenne": "Proba moyenne (%)",
+                "proba_max": "Proba max (%)",
+                "feux_5a": "Feux sur 5 ans",
+            }
+        ),
+        hide_index=True,
+        height=420,
+    )
+
+st.subheader("Detail d'un departement")
+dep = st.selectbox("Departement", sorted(scores["departement"].unique()))
+df_dep = scores[scores["departement"] == dep]
+
+d1, d2, d3 = st.columns(3)
+d1.metric("Communes", len(df_dep))
+d2.metric(
+    "Probabilite moyenne", f"{df_dep['proba_incendie_suivant'].mean() * 100:.1f} %"
+)
+d3.metric("Feux sur 5 ans", f"{df_dep['nb_feux_5a'].sum():.0f}")
+
+colonnes = [
+    c
+    for c in [
+        "code_insee",
+        "nom",
+        "proba_incendie_suivant",
+        "nb_feux_5a",
+        "nb_feux_10a",
+        "cluster_risque",
+    ]
+    if c in df_dep.columns
+]
+top = df_dep.nlargest(20, "proba_incendie_suivant")[colonnes].copy()
+top["proba_incendie_suivant"] = (top["proba_incendie_suivant"] * 100).round(1)
+
+t1, t2 = st.columns([3, 2])
+with t1:
+    st.dataframe(
+        top.rename(columns={"proba_incendie_suivant": "probabilite (%)"}),
+        hide_index=True,
+    )
+with t2:
+    carte = df_dep[["latitude", "longitude"]].dropna()
+    if not carte.empty:
+        st.map(carte, size=400, zoom=8)
+
+st.subheader("Repartition des niveaux de risque")
+if "decile_proba" in scores.columns:
+
+    def niveau(d):
+        d = int(d)
+        return (
+            "Tres eleve"
+            if d >= 9
+            else "Eleve" if d == 8 else "Modere" if d >= 6 else "Faible"
+        )
+
+    repartition = (
+        scores["decile_proba"]
+        .dropna()
+        .map(niveau)
+        .value_counts()
+        .reindex(["Faible", "Modere", "Eleve", "Tres eleve"])
+    )
+    st.bar_chart(repartition, height=260)
+    st.caption(
+        "Niveaux definis par deciles. Avec des seuils fixes sur 100, le niveau "
+        "le plus haut serait vide : aucune commune ne depasse "
+        f"{proba.max() * 100:.0f} / 100."
+    )
+
+st.info(
+    "Pour l'explication d'une commune precise, va sur la page "
+    "**08 · Fiche commune**."
+)

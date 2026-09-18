@@ -1,406 +1,350 @@
 # api/streamlit/pages/08_CommuneExplorer.py
+"""Fiche de risque d'une commune.
 
+Cette page lit uniquement `scores_risque.csv` (34 863 lignes, 9 Mo) : la
+probabilite y est deja calculee par le pipeline, il n'y a donc **aucun modele a
+charger** pour afficher une prediction. Le SHAP local, qui lui a besoin du
+modele, est optionnel et derriere un bouton.
+"""
+
+# --- BOOTSTRAP : la racine du depot doit etre sur sys.path avant tout import projet
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT))
-
-import streamlit as st
-import pandas as pd
-import numpy as np
-import json
-import joblib
-import shap
-import pydeck as pdk
-import matplotlib.pyplot as plt
-
-from sklearn.preprocessing import StandardScaler
-from sklearn.neighbors import NearestNeighbors
-
-from config import DATA_PROCESSED, MODELS
-
-st.set_page_config(page_title="Commune Explorer", layout="wide")
-st.title("🏘️ Commune Explorer")
-
-# Charger latest_run
-with open(DATA_PROCESSED / "latest_run.json") as f:
-    latest = json.load(f)
-
-run_dir = Path(latest["run_dir"])
-model_run_dir = MODELS / "run" / run_dir.name
-
-# Charger features + scores
-df_features = pd.read_csv(model_run_dir / "features_risque.csv")
-df_scores = pd.read_csv(model_run_dir / "scores_risque.csv")
-
-df = df_features.merge(df_scores, on="code_insee", how="left")
-
-# Charger modèle brut pour SHAP local
-model_raw = joblib.load(model_run_dir / "model_risque_raw.joblib")
-explainer = shap.TreeExplainer(model_raw)
-
-# Charger les features du modèle
-feature_cols = json.loads((model_run_dir / "shap_feature_names.json").read_text())
-
-
-# Charger les données historiques des feux
-def load_bdiff():
-    raw_dir = Path("data/raw")
-    files = sorted(raw_dir.glob("bdiff_*.csv"))
-    dfs = []
-    for f in files:
-        df = pd.read_csv(f, sep=";", low_memory=False)
-        df.columns = [c.strip().replace('"', "") for c in df.columns]
-        dfs.append(df)
-    return pd.concat(dfs, ignore_index=True)
-
-
-df_bdiff = load_bdiff()
-
-# Nettoyage minimal
-df_bdiff["Code INSEE"] = df_bdiff["Code INSEE"].astype(str)
-df_bdiff["Année"] = df_bdiff["Année"].astype(int)
-
-# Sélecteur de commune
-communes = df["code_insee"].astype(str).tolist()
-selected_commune = st.selectbox("Choisir une commune", communes)
-
-row = df[df["code_insee"].astype(str) == selected_commune].iloc[0]
-
-st.header(f"🏘️ Commune : {selected_commune}")
-
-# --- SCORE DE RISQUE ---
-st.subheader("🔥 Score de risque")
-col1, col2 = st.columns(2)
-
-with col1:
-    st.metric(
-        "Probabilité d'incendie l'année suivante",
-        f"{row['proba_incendie_suivant']:.3f}",
-    )
-
-with col2:
-    dep = row["code_insee"][:2]
-    df_dep = df[df["code_insee"].astype(str).str.startswith(dep)]
-    rank_dep = (
-        df_dep["proba_incendie_suivant"] > row["proba_incendie_suivant"]
-    ).sum() + 1
-    st.metric("Rang départemental", f"{rank_dep} / {len(df_dep)}")
-
-# --- HISTORIQUE DES FEUX ---
-st.header("🔥 Historique des feux")
-
-df_hist = df_bdiff[df_bdiff["Code INSEE"] == selected_commune]
-
-if len(df_hist) == 0:
-    st.info("Aucun feu historique pour cette commune.")
-else:
-    df_hist_year = (
-        df_hist.groupby("Année")["Surface parcourue (m2)"].sum().reset_index()
-    )
-
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.plot(df_hist_year["Année"], df_hist_year["Surface parcourue (m2)"], marker="o")
-    ax.set_title("Surface brûlée par année")
-    ax.set_ylabel("Surface (m2)")
-    st.pyplot(fig)
-    plt.close(fig)
-
-    # Timeline interactive
-    st.subheader("📅 Timeline des feux")
-    min_year = int(df_hist["Année"].min())
-    max_year = int(df_hist["Année"].max())
-
-    year_range = st.slider("Plage d'années", min_year, max_year, (min_year, max_year))
-
-    df_hist_range = df_hist[
-        (df_hist["Année"] >= year_range[0]) & (df_hist["Année"] <= year_range[1])
-    ]
-
-    df_hist_year_range = (
-        df_hist_range.groupby("Année")["Surface parcourue (m2)"].sum().reset_index()
-    )
-
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.bar(df_hist_year_range["Année"], df_hist_year_range["Surface parcourue (m2)"])
-    ax.set_title("Surface brûlée par année (plage sélectionnée)")
-    ax.set_ylabel("Surface (m2)")
-    st.pyplot(fig)
-    plt.close(fig)
-
-# --- CARTE PYDECK ---
-st.header("🗺️ Carte des feux")
-
-if (
-    len(df_hist) > 0
-    and "Latitude" in df_hist.columns
-    and "Longitude" in df_hist.columns
-):
-    df_hist_map = df_hist.copy()
-    df_hist_map["lat"] = df_hist_map["Latitude"].astype(float)
-    df_hist_map["lon"] = df_hist_map["Longitude"].astype(float)
-
-    midpoint = (df_hist_map["lat"].mean(), df_hist_map["lon"].mean())
-
-    layer = pdk.Layer(
-        "ScatterplotLayer",
-        df_hist_map,
-        get_position=["lon", "lat"],
-        get_radius=50,
-        get_fill_color=[255, 0, 0, 140],
-        pickable=True,
-    )
-
-    view_state = pdk.ViewState(
-        latitude=midpoint[0],
-        longitude=midpoint[1],
-        zoom=11,
-        pitch=45,
-    )
-
-    st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view_state))
-
-st.info(f"""
-### ℹ️ Explication SHAP pour la commune {selected_commune}
-
-Le SHAP local explique **pourquoi** le modèle prédit un risque particulier pour cette commune.
-
-- Les valeurs **positives** poussent la prédiction vers un risque plus élevé.
-- Les valeurs **négatives** poussent la prédiction vers un risque plus faible.
-- Le graphique *waterfall* montre l'effet de chaque feature sur la prédiction finale.
-
-Le SHAP cluster permet de comprendre les **caractéristiques communes** aux communes du même cluster de risque.
-""")
-
-
-# --- SHAP LOCAL ---
-st.header("🧠 SHAP — Explication locale")
-
-row_X = row[feature_cols]
-local_shap = explainer.shap_values(row_X)
-
-fig, ax = plt.subplots(figsize=(10, 6))
-shap.waterfall_plot(local_shap, feature_names=feature_cols, show=False)
-st.pyplot(fig)
-plt.close(fig)
-
-st.subheader("Contribution des features")
-local_df = pd.DataFrame(
-    {"feature": feature_cols, "shap_value": local_shap}
-).sort_values("shap_value", ascending=False)
-
-st.dataframe(local_df)
-# --- INTERPRÉTATION AUTOMATIQUE SHAP LOCAL ---
-st.header("🧾 Interprétation automatique du risque")
-
-# Trier les contributions
-local_sorted = local_df.sort_values("shap_value", ascending=False)
-
-# Top facteurs augmentant le risque
-top_pos = local_sorted[local_sorted["shap_value"] > 0].head(3)
-
-# Top facteurs diminuant le risque
-top_neg = local_sorted[local_sorted["shap_value"] < 0].tail(3)
-
-# Génération du texte
-interpretation = ""
-
-interpretation += f"La commune **{selected_commune}** présente un risque "
-interpretation += (
-    "élevé"
-    if row["proba_incendie_suivant"] > 0.5
-    else "modéré" if row["proba_incendie_suivant"] > 0.2 else "faible"
-)
-interpretation += " d'incendie selon le modèle.\n\n"
-
-if len(top_pos) > 0:
-    interpretation += "### 🔺 Facteurs qui augmentent le risque :\n"
-    for _, r in top_pos.iterrows():
-        interpretation += (
-            f"- **{r['feature']}** : contribution de +{r['shap_value']:.3f}\n"
-        )
-else:
-    interpretation += "Aucun facteur majeur n'augmente le risque.\n"
-
-interpretation += "\n"
-
-if len(top_neg) > 0:
-    interpretation += "### 🔻 Facteurs qui diminuent le risque :\n"
-    for _, r in top_neg.iterrows():
-        interpretation += (
-            f"- **{r['feature']}** : contribution de {r['shap_value']:.3f}\n"
-        )
-else:
-    interpretation += "Aucun facteur majeur ne diminue le risque.\n"
-
-st.markdown(interpretation)
-# --- RISQUE EXPLIQUÉ (phrase synthétique) ---
-st.header("🗣️ Risque expliqué (résumé synthétique)")
-
-
-def synthese_risque(row, top_pos, top_neg):
-    phrase = ""
-
-    # Niveau de risque
-    p = row["proba_incendie_suivant"]
-    if p > 0.7:
-        phrase += "La commune présente un **risque très élevé** d'incendie. "
-    elif p > 0.4:
-        phrase += "La commune présente un **risque élevé** d'incendie. "
-    elif p > 0.2:
-        phrase += "La commune présente un **risque modéré** d'incendie. "
-    else:
-        phrase += "La commune présente un **risque faible** d'incendie. "
-
-    # Facteurs principaux
-    if len(top_pos) > 0:
-        phrase += "Ce risque est principalement dû à "
-        phrase += ", ".join([f"**{r['feature']}**" for _, r in top_pos.iterrows()])
-        phrase += ". "
-
-    if len(top_neg) > 0:
-        phrase += "Certains facteurs réduisent toutefois ce risque, notamment "
-        phrase += ", ".join([f"**{r['feature']}**" for _, r in top_neg.iterrows()])
-        phrase += ". "
-
-    return phrase
-
-
-st.markdown(synthese_risque(row, top_pos, top_neg))
-
-# --- SHAP CLUSTER ---
-st.header("🧩 SHAP — Explication du cluster")
-
-if "cluster_risque" in df.columns:
-    cluster = row["cluster_risque"]
-    st.write(f"Cluster sélectionné : **{cluster}**")
-
-    df_cluster = df[df["cluster_risque"] == cluster]
-    X_cluster = df_cluster[feature_cols]
-
-    shap_cluster = explainer.shap_values(X_cluster)
-    shap_cluster_mean = shap_cluster.mean(axis=0)
-
-    st.subheader("📊 Importance moyenne des features dans le cluster")
-
-    fig, ax = plt.subplots(figsize=(10, 6))
-    shap.summary_plot(
-        shap_cluster, X_cluster, feature_names=feature_cols, plot_type="bar", show=False
-    )
-    st.pyplot(fig)
-    plt.close(fig)
-
-    st.subheader("📉 Waterfall SHAP moyen du cluster")
-
-    fig, ax = plt.subplots(figsize=(10, 6))
-    shap.waterfall_plot(shap_cluster_mean, feature_names=feature_cols, show=False)
-    st.pyplot(fig)
-    plt.close(fig)
-
-# --- SHAP INTERACTIONS CLUSTER ---
-st.header("🧠 SHAP — Interactions dans le cluster")
-
-if "cluster_risque" in df.columns:
-    cluster = row["cluster_risque"]
-    df_cluster = df[df["cluster_risque"] == cluster]
-    X_cluster = df_cluster[feature_cols]
-
-    shap_inter_cluster = shap.TreeExplainer(model_raw).shap_interaction_values(
-        X_cluster
-    )
-
-    feature_i = st.selectbox("Feature 1 (cluster)", feature_cols, index=0)
-    feature_j = st.selectbox("Feature 2 (cluster)", feature_cols, index=1)
-
-    i_idx = feature_cols.index(feature_i)
-    j_idx = feature_cols.index(feature_j)
-
-    fig, ax = plt.subplots(figsize=(10, 6))
-    shap.dependence_plot(
-        (i_idx, j_idx),
-        shap_inter_cluster,
-        X_cluster,
-        feature_names=feature_cols,
-        show=False,
-    )
-    st.pyplot(fig)
-    plt.close(fig)
-
-
-# --- SURFACES BRÛLÉES PAR TYPE ---
-st.header("🌲 Détails des surfaces brûlées")
-
-if len(df_hist) > 0:
-    cols_surfaces = [
-        "Surface forêt (m2)",
-        "Surface maquis garrigues (m2)",
-        "Autres surfaces naturelles hors forêt (m2)",
-        "Surfaces agricoles (m2)",
-        "Autres surfaces (m2)",
-        "Surface autres terres boisées (m2)",
-        "Surfaces non boisées naturelles (m2)",
-        "Surfaces non boisées artificialisées (m2)",
-    ]
-
-    df_surf = df_hist[cols_surfaces].sum().reset_index()
-    df_surf.columns = ["Type", "Surface (m2)"]
-
-    st.dataframe(df_surf)
-
-# --- DÉGÂTS ---
-st.header("🏚️ Dégâts humains et matériels")
-
-if len(df_hist) > 0:
-    nb_deces = df_hist["Nombre de décès"].sum()
-    nb_detruits = df_hist["Nombre de bâtiments totalement détruits"].sum()
-    nb_partiels = df_hist["Nombre de bâtiments partiellement détruits"].sum()
-
-    st.metric("Décès", nb_deces)
-    st.metric("Bâtiments détruits", nb_detruits)
-    st.metric("Bâtiments partiellement détruits", nb_partiels)
-
-# --- COMMUNES SIMILAIRES (KNN) ---
-st.header("🧭 Communes similaires")
-
-X_all = df[feature_cols].copy()
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X_all)
-
-idx = df.index[df["code_insee"].astype(str) == selected_commune][0]
-x_selected = X_scaled[idx].reshape(1, -1)
-
-knn = NearestNeighbors(n_neighbors=6, metric="euclidean")
-knn.fit(X_scaled)
-distances, indices = knn.kneighbors(x_selected)
-
-similar_indices = indices[0][1:]
-df_similar = df.iloc[similar_indices][
-    ["code_insee", "nom", "proba_incendie_suivant", "cluster_risque"]
-]
-
-st.dataframe(df_similar)
-
-# --- COMPARAISON ENTRE COMMUNES ---
-st.header("⚖️ Comparaison avec une autre commune")
-
-other_commune = st.selectbox(
-    "Choisir une commune à comparer",
-    [c for c in communes if c != selected_commune],
+RACINE = Path(__file__).resolve().parents[3]
+if str(RACINE) not in sys.path:
+    sys.path.insert(0, str(RACINE))
+
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+import streamlit as st  # noqa: E402
+
+from api.streamlit import donnees  # noqa: E402
+
+st.set_page_config(page_title="Fiche commune", page_icon="🏘️", layout="wide")
+st.title("🏘️ Fiche de risque d'une commune")
+
+scores = donnees.charger_scores()
+run_dir, model_run_dir = donnees.dossiers_run()
+meta = donnees.lire_json_optionnel(model_run_dir / "metadata.json") or {}
+annee_score = int(meta.get("annee_score", int(scores["annee"].max()) + 1))
+
+st.caption(
+    f"Run `{run_dir.name}` · {len(scores):,} communes · "
+    f"prediction pour l'annee {annee_score}".replace(",", " ")
 )
 
-row_other = df[df["code_insee"].astype(str) == other_commune].iloc[0]
+# ---------------------------------------------------------------------------
+# 1. Selection de la commune
+# ---------------------------------------------------------------------------
+# On ne met jamais 34 863 entrees dans un selecteur : le navigateur rame. On
+# filtre d'abord par departement (ou par recherche de nom), ce qui ramene la
+# liste a quelques centaines d'elements.
+st.subheader("Choisir une commune")
 
-col1, col2 = st.columns(2)
+col_rech, col_dep, col_com = st.columns([2, 1, 3])
 
-with col1:
-    st.subheader(f"Commune {selected_commune}")
-    st.metric("Proba incendie", f"{row['proba_incendie_suivant']:.3f}")
-    st.metric("Nb feux", int(row["nb_feux"]))
-    st.metric("Surface brûlée (ha)", float(row["surface_ha"]))
+with col_rech:
+    recherche = st.text_input(
+        "Rechercher par nom",
+        placeholder="ex. Lançon",
+        key="recherche_nom",
+    ).strip()
 
-with col2:
-    st.subheader(f"Commune {other_commune}")
-    st.metric("Proba incendie", f"{row_other['proba_incendie_suivant']:.3f}")
-    st.metric("Nb feux", int(row_other["nb_feux"]))
-    st.metric("Surface brûlée (ha)", float(row_other["surface_ha"]))
+if recherche:
+    masque = scores["nom"].str.contains(recherche, case=False, na=False) | scores[
+        "code_insee"
+    ].str.startswith(recherche)
+    candidats = scores[masque]
+    with col_dep:
+        st.metric("Resultats", len(candidats))
+    if candidats.empty:
+        st.warning(f"Aucune commune ne correspond a « {recherche} ».")
+        st.stop()
+else:
+    departements = sorted(scores["departement"].unique())
+    with col_dep:
+        dep = st.selectbox("Departement", departements, key="dep_choisi")
+    candidats = scores[scores["departement"] == dep]
+
+candidats = candidats.sort_values("nom")
+etiquettes = {
+    code: f"{nom} ({code})"
+    for code, nom in zip(candidats["code_insee"], candidats["nom"])
+}
+
+with col_com:
+    code_choisi = st.selectbox(
+        "Commune",
+        options=list(etiquettes.keys()),
+        format_func=lambda c: etiquettes[c],
+        key="commune_choisie",
+    )
+
+ligne = scores.loc[scores["code_insee"] == code_choisi].iloc[0]
+
+
+# ---------------------------------------------------------------------------
+# 2. Le score
+# ---------------------------------------------------------------------------
+def niveau_par_decile(decile: float) -> tuple[str, str]:
+    """Niveau de risque fonde sur les deciles, pas sur des seuils fixes.
+
+    Avec des seuils fixes (> 50/100 = « tres eleve »), aucune commune de France
+    n'atteint le niveau le plus haut : la probabilite maximale est de 0,31. Les
+    deciles decrivent la position **relative** de la commune, ce qui est ce que
+    l'on veut pour cibler la prevention.
+    """
+    if pd.isna(decile):
+        return "Indetermine", "gray"
+    d = int(decile)
+    if d >= 9:
+        return "Tres eleve", "red"
+    if d == 8:
+        return "Eleve", "orange"
+    if d >= 6:
+        return "Modere", "blue"
+    return "Faible", "green"
+
+
+proba = float(ligne["proba_incendie_suivant"])
+niveau, couleur = niveau_par_decile(ligne.get("decile_proba", np.nan))
+
+rang_national = int((scores["proba_incendie_suivant"] > proba).sum()) + 1
+meme_dep = scores[scores["departement"] == ligne["departement"]]
+rang_dep = int((meme_dep["proba_incendie_suivant"] > proba).sum()) + 1
+
+st.header(f"{ligne['nom']}  ·  {code_choisi}")
+
+c1, c2, c3, c4 = st.columns(4)
+c1.metric(f"Probabilite d'au moins un feu en {annee_score}", f"{proba * 100:.1f} %")
+c2.metric("Niveau de risque", niveau)
+c3.metric("Rang national", f"{rang_national} / {len(scores)}")
+c4.metric(
+    f"Rang dans le departement {ligne['departement']}",
+    f"{rang_dep} / {len(meme_dep)}",
+)
+
+taux_base = float(scores["proba_incendie_suivant"].mean())
+st.caption(
+    f"Moyenne nationale : {taux_base * 100:.1f} % — cette commune est a "
+    f"**{proba / taux_base:.1f}×** la moyenne. "
+    "La probabilite repond a la question « au moins un feu dans l'annee ? », "
+    "pas « quand » ni « quelle surface »."
+)
+
+st.progress(
+    min(1.0, proba / max(1e-9, float(scores["proba_incendie_suivant"].max()))),
+    text=f"Position sur l'echelle nationale (max observe : "
+    f"{scores['proba_incendie_suivant'].max() * 100:.1f} %)",
+)
+
+# ---------------------------------------------------------------------------
+# 3. Ce qui explique ce score
+# ---------------------------------------------------------------------------
+st.subheader("Ce que le modele a vu sur cette commune")
+
+g1, g2, g3 = st.columns(3)
+
+
+def encart(titre: str, valeurs: dict) -> None:
+    """Petit tableau cle / valeur, toutes les valeurs en texte.
+
+    Melanger des entiers et des chaines dans une meme colonne fait echouer la
+    serialisation Arrow utilisee par Streamlit : on formate donc tout en amont.
+    """
+    st.markdown(f"**{titre}**")
+    st.dataframe(
+        pd.DataFrame(
+            {"valeur": [str(v) for v in valeurs.values()]},
+            index=list(valeurs.keys()),
+        ),
+        height=180,
+    )
+
+
+with g1:
+    encart(
+        "Historique des feux",
+        {
+            "Feux sur 5 ans": f"{ligne.get('nb_feux_5a', 0):.0f}",
+            "Feux sur 10 ans": f"{ligne.get('nb_feux_10a', 0):.0f}",
+            "Surface brulee 10 ans (ha)": f"{ligne.get('surface_10a_ha', 0):.1f}",
+            "Part des feux d'ete": f"{ligne.get('part_feux_ete_5a', 0) * 100:.0f} %",
+        },
+    )
+
+with g2:
+    zone = int(ligne.get("cluster_spatial", -1))
+    encart(
+        "Groupes",
+        {
+            "Profil KMeans": int(ligne.get("cluster_risque", -1)),
+            "Zone DBSCAN": "hors zone dense" if zone < 0 else f"zone {zone}",
+            "Decile de risque": (
+                "n/a"
+                if pd.isna(ligne.get("decile_proba", np.nan))
+                else f"{int(ligne['decile_proba']) + 1} / 10"
+            ),
+        },
+    )
+
+with g3:
+    encart(
+        "Contexte",
+        {
+            "Population": f"{ligne.get('population', 0):,.0f}".replace(",", " "),
+            "Superficie (km2)": f"{ligne.get('superficie_km2', 0):.1f}",
+            "Altitude moyenne (m)": f"{ligne.get('altitude_moy', 0):.0f}",
+            "Latitude / longitude": (
+                f"{ligne.get('latitude', 0):.3f} / {ligne.get('longitude', 0):.3f}"
+            ),
+        },
+    )
+
+# ---------------------------------------------------------------------------
+# 4. Historique annuel
+# ---------------------------------------------------------------------------
+st.subheader("Historique annuel des feux")
+
+historique = donnees.charger_historique()
+hist_commune = historique[historique["code_insee"] == code_choisi].sort_values("annee")
+
+if hist_commune.empty or hist_commune["nb_feux"].sum() == 0:
+    st.info(
+        "Aucun incendie enregistre pour cette commune sur la periode couverte "
+        "par la base. Son score provient alors surtout de sa position "
+        "geographique et de son groupe."
+    )
+else:
+    h1, h2 = st.columns(2)
+    with h1:
+        st.markdown("**Nombre de feux par annee**")
+        st.bar_chart(hist_commune.set_index("annee")["nb_feux"], height=240)
+    with h2:
+        st.markdown("**Surface brulee par annee (ha)**")
+        st.bar_chart(hist_commune.set_index("annee")["surface_ha"], height=240)
+
+# ---------------------------------------------------------------------------
+# 5. Situation dans le departement
+# ---------------------------------------------------------------------------
+st.subheader(f"Situation dans le departement {ligne['departement']}")
+
+top_dep = meme_dep.nlargest(15, "proba_incendie_suivant")[
+    ["code_insee", "nom", "proba_incendie_suivant", "nb_feux_5a", "cluster_risque"]
+].copy()
+top_dep["proba_incendie_suivant"] = (top_dep["proba_incendie_suivant"] * 100).round(1)
+top_dep = top_dep.rename(
+    columns={
+        "code_insee": "Code INSEE",
+        "nom": "Commune",
+        "proba_incendie_suivant": "Probabilite (%)",
+        "nb_feux_5a": "Feux 5 ans",
+        "cluster_risque": "Profil",
+    }
+)
+
+d1, d2 = st.columns([3, 2])
+with d1:
+    st.dataframe(top_dep, hide_index=True)
+with d2:
+    if {"latitude", "longitude"}.issubset(meme_dep.columns):
+        carte = meme_dep[["latitude", "longitude"]].dropna()
+        if not carte.empty:
+            st.map(carte, size=300, zoom=7)
+
+# ---------------------------------------------------------------------------
+# 6. Comparaison
+# ---------------------------------------------------------------------------
+st.subheader("Comparer avec une autre commune")
+
+autres = {c: e for c, e in etiquettes.items() if c != code_choisi}
+if autres:
+    code_autre = st.selectbox(
+        "Commune de comparaison",
+        options=list(autres.keys()),
+        format_func=lambda c: autres[c],
+        key="commune_comparee",
+    )
+    autre = scores.loc[scores["code_insee"] == code_autre].iloc[0]
+
+    champs = [
+        ("Probabilite (%)", "proba_incendie_suivant", 100, 1),
+        ("Feux sur 5 ans", "nb_feux_5a", 1, 0),
+        ("Feux sur 10 ans", "nb_feux_10a", 1, 0),
+        ("Surface brulee 10 ans (ha)", "surface_10a_ha", 1, 1),
+        ("Population", "population", 1, 0),
+        ("Superficie (km²)", "superficie_km2", 1, 1),
+    ]
+    comparaison = pd.DataFrame(
+        {
+            ligne["nom"]: [
+                round(float(ligne.get(col, 0)) * fac, dec)
+                for _, col, fac, dec in champs
+            ],
+            autre["nom"]: [
+                round(float(autre.get(col, 0)) * fac, dec)
+                for _, col, fac, dec in champs
+            ],
+        },
+        index=[libelle for libelle, _, _, _ in champs],
+    )
+    st.dataframe(comparaison)
+
+# ---------------------------------------------------------------------------
+# 7. SHAP local — optionnel, car il faut charger le modele
+# ---------------------------------------------------------------------------
+st.subheader("Explication detaillee (SHAP)")
+
+poids_modele = donnees.taille_mo(model_run_dir / "model_risque_raw.joblib")
+st.caption(
+    "Le SHAP local dit quelle variable a pousse le score vers le haut ou vers "
+    f"le bas pour cette commune. Il necessite de charger le modele "
+    f"({poids_modele:.0f} Mo), ce qui prend quelques secondes la premiere fois."
+)
+
+if st.button("Calculer l'explication SHAP de cette commune"):
+    donnees.module_optionnel("shap")
+    modele = donnees.charger_modele_brut()
+    if modele is not None:
+        noms = donnees.lire_json_optionnel(model_run_dir / "shap_feature_names.json")
+        if noms is None:
+            from models.config_pipeline import FEATURE_COLUMNS as noms
+        manquantes = [c for c in noms if c not in scores.columns]
+        if manquantes:
+            st.error(f"Variables absentes de scores_risque.csv : {manquantes}")
+        else:
+            explainer = donnees.charger_explainer(modele)
+            x = ligne[noms].astype(float).to_frame().T
+            valeurs = donnees.contribution_classe_positive(explainer.shap_values(x))
+            valeurs = np.asarray(valeurs).reshape(-1)[: len(noms)]
+
+            contributions = (
+                pd.DataFrame({"variable": noms, "contribution": valeurs})
+                .assign(effet=lambda d: np.where(d["contribution"] >= 0, "↑", "↓"))
+                .sort_values("contribution", ascending=False)
+            )
+
+            s1, s2 = st.columns(2)
+            with s1:
+                st.markdown("**Ce qui augmente le risque**")
+                st.dataframe(
+                    contributions[contributions["contribution"] > 0].head(6),
+                    hide_index=True,
+                )
+            with s2:
+                st.markdown("**Ce qui le diminue**")
+                st.dataframe(
+                    contributions[contributions["contribution"] < 0].tail(6),
+                    hide_index=True,
+                )
+
+            st.bar_chart(
+                contributions.set_index("variable")["contribution"],
+                height=340,
+            )
+            st.caption(
+                f"Valeur de base du modele : "
+                f"{donnees.valeur_attendue(explainer):.4f}. Les contributions "
+                "s'ajoutent a cette base pour donner la prediction."
+            )

@@ -1,51 +1,80 @@
+# api/streamlit/pages/06_RunExplorer.py
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT))
+RACINE = Path(__file__).resolve().parents[3]
+if str(RACINE) not in sys.path:
+    sys.path.insert(0, str(RACINE))
 
-from api.streamlit.bootstrap import ROOT
-from config import DATA_PROCESSED, MODELS
-import streamlit as st
-import json
+import pandas as pd  # noqa: E402
+import streamlit as st  # noqa: E402
 
-st.set_page_config(page_title="Run explorer", layout="wide")
+from config import DATA_PROCESSED, MODELS  # noqa: E402
+from api.streamlit import donnees  # noqa: E402
 
-st.title("Explorateur de runs")
+st.set_page_config(page_title="Explorateur de runs", page_icon="📦", layout="wide")
+st.title("📦 Explorateur de runs")
 
-runs_dir = DATA_PROCESSED / "run"
-if not runs_dir.exists():
-    st.error("Aucun dossier de runs trouvé.")
-    st.stop()
-
-run_dirs = sorted([p for p in runs_dir.iterdir() if p.is_dir()])
-
-st.subheader("Liste des runs")
-selected_run = st.selectbox(
-    "Choisir un run",
-    options=[p.name for p in run_dirs],
+run_courant, _ = donnees.dossiers_run()
+dossier = DATA_PROCESSED / "run"
+runs = (
+    sorted((d.name for d in dossier.iterdir() if d.is_dir()), reverse=True)
+    if dossier.exists()
+    else []
 )
 
-run_dir = runs_dir / selected_run
-model_run_dir = MODELS / "run" / selected_run
+if not runs:
+    st.warning("Aucun run sur le disque.")
+    st.stop()
 
-st.write(f"Dossier data : {run_dir}")
-st.write(f"Dossier modèles : {model_run_dir}")
+st.caption(f"Run courant : `{run_courant.name}`")
+choisi = st.selectbox(
+    "Run a inspecter",
+    runs,
+    index=runs.index(run_courant.name) if run_courant.name in runs else 0,
+)
 
-manifest_path = run_dir / "run_manifest.json"
-if manifest_path.exists():
-    st.subheader("Manifest du run")
-    with open(manifest_path) as f:
-        manifest = json.load(f)
-    st.json(manifest)
+rd = dossier / choisi
+md = MODELS / "run" / choisi
+
+lignes = []
+for base, etiquette in ((rd, "donnees"), (md, "modeles")):
+    if base.exists():
+        for f in sorted(base.iterdir()):
+            if f.is_file():
+                lignes.append(
+                    {
+                        "emplacement": etiquette,
+                        "fichier": f.name,
+                        "taille (Mo)": round(f.stat().st_size / (1024 * 1024), 2),
+                    }
+                )
+
+st.subheader("Artefacts produits")
+if lignes:
+    tableau = pd.DataFrame(lignes)
+    st.dataframe(tableau, hide_index=True)
+    lourds = tableau[tableau["taille (Mo)"] > donnees.TAILLE_MODELE_MAX_MO]
+    if not lourds.empty:
+        st.error(
+            "Artefacts anormalement lourds : "
+            + ", ".join(
+                f"{r.fichier} ({r['taille (Mo)'] / 1024:.1f} Go)"
+                for _, r in lourds.iterrows()
+            )
+            + ".\n\nUn modele de plusieurs Go vient d'une foret sans `max_depth` "
+            "calibree sans `cv`. Corrige `models/pipeline/training.py` et relance "
+            "l'entrainement : il doit retomber autour de 100 Mo."
+        )
 else:
-    st.warning("run_manifest.json manquant pour ce run.")
+    st.warning("Ce run ne contient aucun fichier.")
 
-dataset_report_path = run_dir / "dataset_report.json"
-if dataset_report_path.exists():
-    st.subheader("Dataset report")
-    with open(dataset_report_path) as f:
-        dataset_report = json.load(f)
-    st.json(dataset_report)
-else:
-    st.warning("dataset_report.json manquant pour ce run.")
+for titre, chemin in [
+    ("Manifeste", rd / "run_manifest.json"),
+    ("Decoupage train / test", md / "split_report.json"),
+    ("Metriques", md / "metadata.json"),
+]:
+    contenu = donnees.lire_json_optionnel(chemin)
+    if contenu is not None:
+        st.subheader(titre)
+        st.json(contenu)

@@ -14,3 +14,10 @@ exclude =
     dist,
     .venv,
     venv
+
+# Les pages Streamlit contiennent des tableaux markdown : une ligne de tableau
+# ne se coupe pas sans casser le rendu. E501 y est donc tolere, et seulement la.
+per-file-ignores =
+    api/streamlit/app.py: E501
+    api/streamlit/pages/10_Comparaison.py: E501
+    api/streamlit/pages/11_Prediction_datee.py: E501

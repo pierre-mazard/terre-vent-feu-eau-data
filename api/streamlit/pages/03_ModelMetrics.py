@@ -1,133 +1,86 @@
 # api/streamlit/pages/03_ModelMetrics.py
-
-# --- BOOTSTRAP ---
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT))
+RACINE = Path(__file__).resolve().parents[3]
+if str(RACINE) not in sys.path:
+    sys.path.insert(0, str(RACINE))
 
-# --- Imports projet ---
-from config import DATA_PROCESSED, MODELS
+import pandas as pd  # noqa: E402
+import streamlit as st  # noqa: E402
 
-# --- Imports Streamlit ---
-import streamlit as st
-import json
-import pandas as pd
-import numpy as np
+from api.streamlit import donnees  # noqa: E402
 
-# --- ML ---
-from sklearn.metrics import (
-    roc_curve,
-    auc,
-    precision_recall_curve,
-    confusion_matrix,
+st.set_page_config(page_title="Metriques", page_icon="📊", layout="wide")
+st.title("📊 Performance du modele")
+
+_, model_run_dir = donnees.dossiers_run()
+meta = donnees.charger_json(
+    model_run_dir / "metadata.json",
+    "Les metriques du modele `metadata.json`",
+    "python -m models.train_test.train_model",
 )
-from sklearn.calibration import calibration_curve
+scores = donnees.charger_scores()
 
-st.set_page_config(page_title="Model metrics", layout="wide")
-st.title("📊 Metrics du modèle")
+taux_base = 1 / 40  # ordre de grandeur du taux de communes qui brulent
+pr = meta.get("pr_auc")
+roc = meta.get("roc_auc")
 
-# Charger latest_run
-latest_path = DATA_PROCESSED / "latest_run.json"
-with open(latest_path) as f:
-    latest = json.load(f)
+c1, c2, c3 = st.columns(3)
+c1.metric("PR-AUC (test temporel)", f"{pr:.3f}" if pr else "—")
+c2.metric("ROC-AUC", f"{roc:.3f}" if roc else "—")
+c3.metric("Annee predite", meta.get("annee_score", "—"))
 
-run_dir = Path(latest["run_dir"])
-model_run_dir = MODELS / "run" / run_dir.name
+st.info(
+    "**Pourquoi la PR-AUC et pas l'exactitude.** Environ 2,5 % des communes "
+    "brulent d'une annee sur l'autre. Un modele qui repond « non » partout "
+    "obtient donc 97,5 % d'exactitude sans servir a rien. Le plancher de la "
+    "PR-AUC n'est pas 0,5 mais ce taux de base : c'est a lui qu'il faut la "
+    "comparer."
+)
 
-# Charger metadata
-metadata_path = model_run_dir / "metadata.json"
-with open(metadata_path) as f:
-    metadata = json.load(f)
+st.subheader("Distribution des probabilites predites")
+st.caption(
+    "Ces probabilites portent sur l'annee de scoring, pour laquelle la verite "
+    "n'est pas encore connue : on ne peut donc pas y recalculer une courbe ROC. "
+    "Les metriques ci-dessus viennent du test temporel, sur une annee dont la "
+    "cible est observee."
+)
 
-st.subheader("ℹ️ Metadata du modèle")
-st.json(metadata)
+proba = scores["proba_incendie_suivant"]
+histogramme = (
+    pd.cut(proba, bins=20).value_counts().sort_index().rename("communes").to_frame()
+)
+histogramme.index = [f"{i.left:.2f}–{i.right:.2f}" for i in histogramme.index]
+st.bar_chart(histogramme, height=300)
 
-# Charger scores
-scores_path = model_run_dir / "scores_risque.csv"
-scores = pd.read_csv(scores_path)
+st.subheader("Niveaux de risque, par deciles")
+st.caption(
+    "Les niveaux sont definis par deciles et non par des seuils fixes : avec un "
+    f"maximum national de {proba.max() * 100:.1f} %, un seuil « > 50 / 100 » "
+    "laisserait le niveau le plus haut vide."
+)
 
-y_true = scores["cible_incendie_suivant"].astype(int)
-y_proba = scores["proba_incendie_suivant"].astype(float)
-y_pred = (y_proba >= 0.5).astype(int)
-
-# Vérifier si y_true contient au moins un positif
-if y_true.sum() == 0:
-    st.warning("""
-### ⚠️ Aucun incendie réel dans les données de scoring futur
-Le scoring futur (année N+1) ne contient **aucun incendie réel**.
-C’est normal : la cible n’existe pas encore.
-
-Dans ce cas :
-- ROC / PR ne peuvent pas être calculées
-- La matrice de confusion est 1×1
-- La calibration est non pertinente
-
-👉 On affiche uniquement les métriques disponibles.
-""")
-
-    st.subheader("📊 Distribution des probabilités")
-    st.bar_chart(y_proba)
-
-    st.subheader("📌 Statistiques")
-    st.write(
-        {
-            "Nombre de communes scorées": len(scores),
-            "Taux d'incendie réel": float(y_true.mean()),
-            "Taux d'incendie prédit (>=0.5)": float(y_pred.mean()),
-            "Probabilité moyenne": float(y_proba.mean()),
-            "Probabilité max": float(y_proba.max()),
-        }
+if "decile_proba" in scores.columns:
+    par_decile = (
+        scores.groupby("decile_proba")
+        .agg(
+            communes=("code_insee", "size"),
+            proba_min=("proba_incendie_suivant", "min"),
+            proba_max=("proba_incendie_suivant", "max"),
+        )
+        .reset_index()
     )
+    par_decile["decile_proba"] = par_decile["decile_proba"].astype(int) + 1
+    st.dataframe(par_decile, hide_index=True)
 
-    st.stop()
-
-# --- Si positifs présents : calcul complet ---
-
-# ROC
-fpr, tpr, _ = roc_curve(y_true, y_proba)
-roc_auc = auc(fpr, tpr)
-
-st.subheader("📈 Courbe ROC")
-st.line_chart(pd.DataFrame({"FPR": fpr, "TPR": tpr}))
-st.write(f"**AUC ROC : {roc_auc:.4f}**")
-
-# PR
-precision, recall, _ = precision_recall_curve(y_true, y_proba)
-pr_auc = auc(recall, precision)
-
-st.subheader("📈 Courbe PR")
-st.line_chart(pd.DataFrame({"Recall": recall, "Precision": precision}))
-st.write(f"**AUC PR : {pr_auc:.4f}**")
-
-# Calibration
-prob_true, prob_pred = calibration_curve(y_true, y_proba, n_bins=20)
-
-st.subheader("🎯 Calibration")
-st.line_chart(
-    pd.DataFrame({"Probabilité prédite": prob_pred, "Probabilité réelle": prob_true})
-)
-
-# Confusion matrix
-cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
-cm_df = pd.DataFrame(cm, columns=["Prédit 0", "Prédit 1"], index=["Réel 0", "Réel 1"])
-
-st.subheader("🧮 Matrice de confusion")
-st.dataframe(cm_df)
-
-# Histogramme
-st.subheader("📊 Distribution des probabilités")
-st.bar_chart(y_proba)
-
-# Stats
-st.subheader("📌 Statistiques")
+st.subheader("Statistiques")
 st.write(
     {
-        "Nombre de communes scorées": len(scores),
-        "Taux d'incendie réel": float(y_true.mean()),
-        "Taux d'incendie prédit (>=0.5)": float(y_pred.mean()),
-        "AUC ROC": roc_auc,
-        "AUC PR": pr_auc,
+        "Communes scorees": int(len(scores)),
+        "Probabilite moyenne": round(float(proba.mean()), 4),
+        "Probabilite mediane": round(float(proba.median()), 4),
+        "Probabilite maximale": round(float(proba.max()), 4),
+        "Communes au-dessus de 2x la moyenne": int((proba > 2 * proba.mean()).sum()),
     }
 )

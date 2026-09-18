@@ -1,48 +1,50 @@
+# api/streamlit/pages/04_Features.py
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT))
+RACINE = Path(__file__).resolve().parents[3]
+if str(RACINE) not in sys.path:
+    sys.path.insert(0, str(RACINE))
 
-from api.streamlit.bootstrap import ROOT
-from config import DATA_PROCESSED, MODELS
+import streamlit as st  # noqa: E402
 
-import streamlit as st
-import json
-import pandas as pd
+from api.streamlit import donnees  # noqa: E402
 
-st.set_page_config(page_title="Features", layout="wide")
+st.set_page_config(page_title="Variables", page_icon="🧮", layout="wide")
+st.title("🧮 Les variables du modele")
 
-st.title("Exploration des features")
+scores = donnees.charger_scores()
+_, model_run_dir = donnees.dossiers_run()
 
-latest_path = DATA_PROCESSED / "latest_run.json"
-if not latest_path.exists():
-    st.error("latest_run.json introuvable.")
-    st.stop()
+noms = donnees.lire_json_optionnel(model_run_dir / "shap_feature_names.json")
+if noms is None:
+    from models.config_pipeline import FEATURE_COLUMNS as noms
 
-with open(latest_path) as f:
-    latest = json.load(f)
+st.caption(
+    f"{len(noms)} variables d'entree, decrites ici sur les {len(scores):,} communes "
+    "de l'annee de scoring. Le fichier complet des variables fait 157 Mo et "
+    "couvre toutes les annees : on ne le charge pas ici.".replace(",", " ")
+)
 
-run_dir = Path(latest["run_dir"])
-
-features_path = run_dir / "features_final.csv"
-if not features_path.exists():
-    st.error("features_final.csv introuvable.")
-    st.stop()
-
-df = pd.read_csv(features_path)
-
-st.subheader("Aperçu des données")
-st.dataframe(df.head())
-
-st.subheader("Colonnes disponibles")
-st.write(list(df.columns))
+presentes = [c for c in noms if c in scores.columns]
 
 st.subheader("Statistiques descriptives")
-st.write(df.describe())
+st.dataframe(scores[presentes].describe().T)
 
-st.subheader("Distribution de la cible")
-if "cible_incendie_suivant" in df.columns:
-    st.bar_chart(df["cible_incendie_suivant"].value_counts())
-else:
-    st.warning("Colonne cible_incendie_suivant absente.")
+st.subheader("Distribution d'une variable")
+variable = st.selectbox("Variable", presentes)
+st.bar_chart(scores[variable], height=280)
+
+st.subheader("Correlation avec la probabilite predite")
+correlations = (
+    scores[presentes + ["proba_incendie_suivant"]]
+    .corr(numeric_only=True)["proba_incendie_suivant"]
+    .drop("proba_incendie_suivant")
+    .sort_values(ascending=False)
+)
+st.bar_chart(correlations, height=360)
+st.caption(
+    "Une correlation elevee ne signifie pas que la variable est importante pour "
+    "le modele : l'importance reelle se mesure par permutation ou par SHAP "
+    "(page 07)."
+)
